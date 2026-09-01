@@ -1,0 +1,20 @@
+{
+  "eventId": "mandate_retry-00043",
+  "flow": "mandate_retry",
+  "customerId": "cust_man_43",
+  "customerName": "Ananya Menon",
+  "customerPhone": "+91 9639816019",
+  "customerEmail": "ananya.menon23@yahoo.com",
+  "amount": 1528007,
+  "currency": "INR",
+  "occurredAt": 1788048000000,
+  "invoiceId": "inv_00000043",
+  "signal": {
+    "error_code": "ISSUER_UNAVAILABLE",
+    "mandate_revoked": false,
+    "retry_window": {
+      "end": 1788393600000,
+      "start": 1788134400000
+    }
+  }
+}

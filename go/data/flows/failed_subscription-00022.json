@@ -1,0 +1,19 @@
+{
+  "eventId": "failed_subscription-00022",
+  "flow": "failed_subscription",
+  "customerId": "cust_fai_22",
+  "customerName": "Aisha Sharma",
+  "customerPhone": "+91 9669955662",
+  "customerEmail": "aisha.sharma81@yahoo.com",
+  "amount": 7918723,
+  "currency": "INR",
+  "occurredAt": 1787702400000,
+  "invoiceId": "inv_00000022",
+  "signal": {
+    "error_code": "ISSUER_UNAVAILABLE",
+    "error_description": "temporarily unavailable",
+    "error_reason": "transient_failure",
+    "mandate_revoked": false,
+    "payment_method": "upi"
+  }
+}

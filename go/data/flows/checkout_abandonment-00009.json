@@ -1,0 +1,19 @@
+{
+  "eventId": "checkout_abandonment-00009",
+  "flow": "checkout_abandonment",
+  "customerId": "cust_che_9",
+  "customerName": "Sara Menon",
+  "customerPhone": "+91 9707634261",
+  "customerEmail": "sara.menon67@yahoo.com",
+  "amount": 299500,
+  "currency": "INR",
+  "occurredAt": 1788220800000,
+  "invoiceId": "inv_00000009",
+  "signal": {
+    "abandoned_at_step": "address",
+    "cart_value": 1149962,
+    "error": "",
+    "price_mismatch": true,
+    "visits": 5
+  }
+}

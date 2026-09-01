@@ -1,0 +1,19 @@
+{
+  "eventId": "payment_degradation-00002",
+  "flow": "payment_degradation",
+  "customerId": "cust_pay_2",
+  "customerName": "Reyansh Rao",
+  "customerPhone": "+91 9948345551",
+  "customerEmail": "reyansh.rao57@yahoo.com",
+  "amount": 632791,
+  "currency": "INR",
+  "occurredAt": 1788048000000,
+  "invoiceId": "inv_00000002",
+  "signal": {
+    "error_code": "SUCCESS_RATE_DROP",
+    "issuer_down": false,
+    "latency_ms": 3626,
+    "recovered": true,
+    "success_rate": 0.98
+  }
+}

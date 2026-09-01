@@ -1,0 +1,19 @@
+{
+  "eventId": "payment_degradation-00005",
+  "flow": "payment_degradation",
+  "customerId": "cust_pay_5",
+  "customerName": "Aisha Nair",
+  "customerPhone": "+91 9851829718",
+  "customerEmail": "aisha.nair56@gmail.com",
+  "amount": 394420,
+  "currency": "INR",
+  "occurredAt": 1787961600000,
+  "invoiceId": "inv_00000005",
+  "signal": {
+    "error_code": "SUCCESS_RATE_DROP",
+    "issuer_down": false,
+    "latency_ms": 3253,
+    "recovered": true,
+    "success_rate": 0.98
+  }
+}

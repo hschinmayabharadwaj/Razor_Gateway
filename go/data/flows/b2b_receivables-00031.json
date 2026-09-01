@@ -1,0 +1,17 @@
+{
+  "eventId": "b2b_receivables-00031",
+  "flow": "b2b_receivables",
+  "customerId": "cust_b2b_31",
+  "customerName": "Ishaan Joshi",
+  "customerPhone": "+91 9716343312",
+  "customerEmail": "ishaan.joshi32@gmail.com",
+  "amount": 6086947,
+  "currency": "INR",
+  "occurredAt": 1787616000000,
+  "invoiceId": "inv_00000031",
+  "signal": {
+    "dispute_note": "Billing dispute filed",
+    "disputed": true,
+    "overdue_days": 35
+  }
+}

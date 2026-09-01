@@ -1,0 +1,17 @@
+{
+  "eventId": "b2b_receivables-00034",
+  "flow": "b2b_receivables",
+  "customerId": "cust_b2b_34",
+  "customerName": "Ananya Reddy",
+  "customerPhone": "+91 9667730622",
+  "customerEmail": "ananya.reddy66@gmail.com",
+  "amount": 7740000,
+  "currency": "INR",
+  "occurredAt": 1788134400000,
+  "invoiceId": "inv_00000034",
+  "signal": {
+    "dispute_note": "Billing dispute filed",
+    "disputed": true,
+    "overdue_days": 35
+  }
+}

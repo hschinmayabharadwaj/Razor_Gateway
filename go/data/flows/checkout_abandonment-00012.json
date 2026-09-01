@@ -1,0 +1,19 @@
+{
+  "eventId": "checkout_abandonment-00012",
+  "flow": "checkout_abandonment",
+  "customerId": "cust_che_12",
+  "customerName": "Ishaan Nair",
+  "customerPhone": "+91 9808790467",
+  "customerEmail": "ishaan.nair4@outlook.com",
+  "amount": 211492,
+  "currency": "INR",
+  "occurredAt": 1787616000000,
+  "invoiceId": "inv_00000012",
+  "signal": {
+    "abandoned_at_step": "otp",
+    "cart_value": 1063263,
+    "error": "",
+    "price_mismatch": false,
+    "visits": 1
+  }
+}

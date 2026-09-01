@@ -1,0 +1,19 @@
+{
+  "eventId": "failed_subscription-00023",
+  "flow": "failed_subscription",
+  "customerId": "cust_fai_23",
+  "customerName": "Reyansh Nair",
+  "customerPhone": "+91 9852356373",
+  "customerEmail": "reyansh.nair63@yahoo.com",
+  "amount": 6683949,
+  "currency": "INR",
+  "occurredAt": 1787702400000,
+  "invoiceId": "inv_00000023",
+  "signal": {
+    "error_code": "AUTH_FAILED",
+    "error_description": "3DS abandoned",
+    "error_reason": "otp_timeout",
+    "mandate_revoked": false,
+    "payment_method": "card"
+  }
+}

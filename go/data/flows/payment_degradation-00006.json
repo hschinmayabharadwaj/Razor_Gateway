@@ -1,0 +1,19 @@
+{
+  "eventId": "payment_degradation-00006",
+  "flow": "payment_degradation",
+  "customerId": "cust_pay_6",
+  "customerName": "Rohan Patel",
+  "customerPhone": "+91 9713291381",
+  "customerEmail": "rohan.patel93@yahoo.com",
+  "amount": 293806,
+  "currency": "INR",
+  "occurredAt": 1788048000000,
+  "invoiceId": "inv_00000006",
+  "signal": {
+    "error_code": "ISSUER_DOWN",
+    "issuer_down": true,
+    "latency_ms": 762,
+    "recovered": true,
+    "success_rate": 0.98
+  }
+}

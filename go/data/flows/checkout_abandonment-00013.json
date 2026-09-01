@@ -1,0 +1,19 @@
+{
+  "eventId": "checkout_abandonment-00013",
+  "flow": "checkout_abandonment",
+  "customerId": "cust_che_13",
+  "customerName": "Vihaan Menon",
+  "customerPhone": "+91 9912216142",
+  "customerEmail": "vihaan.menon6@gmail.com",
+  "amount": 877012,
+  "currency": "INR",
+  "occurredAt": 1787961600000,
+  "invoiceId": "inv_00000013",
+  "signal": {
+    "abandoned_at_step": "complete",
+    "cart_value": 101259,
+    "error": "gateway_timeout",
+    "price_mismatch": false,
+    "visits": 5
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "eventId": "checkout_abandonment-00017",
+  "flow": "checkout_abandonment",
+  "customerId": "cust_che_17",
+  "customerName": "Kabir Sharma",
+  "customerPhone": "+91 9888781403",
+  "customerEmail": "kabir.sharma22@gmail.com",
+  "amount": 53583,
+  "currency": "INR",
+  "occurredAt": 1788134400000,
+  "invoiceId": "inv_00000017",
+  "signal": {
+    "abandoned_at_step": "otp",
+    "cart_value": 190543,
+    "error": "",
+    "price_mismatch": false,
+    "visits": 4
+  }
+}

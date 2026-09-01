@@ -1,0 +1,17 @@
+{
+  "eventId": "promise_to_pay-00059",
+  "flow": "promise_to_pay",
+  "customerId": "cust_pro_59",
+  "customerName": "Sara Iyer",
+  "customerPhone": "+91 9525188347",
+  "customerEmail": "sara.iyer35@outlook.com",
+  "amount": 914931,
+  "currency": "INR",
+  "occurredAt": 1787788800000,
+  "invoiceId": "inv_00000059",
+  "signal": {
+    "amount": 4938566,
+    "ptp_date": 1788566400000,
+    "ptp_status": "committed"
+  }
+}

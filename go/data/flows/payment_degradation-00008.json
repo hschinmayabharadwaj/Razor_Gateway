@@ -1,0 +1,19 @@
+{
+  "eventId": "payment_degradation-00008",
+  "flow": "payment_degradation",
+  "customerId": "cust_pay_8",
+  "customerName": "Reyansh Menon",
+  "customerPhone": "+91 9784137961",
+  "customerEmail": "reyansh.menon23@outlook.com",
+  "amount": 142952,
+  "currency": "INR",
+  "occurredAt": 1787616000000,
+  "invoiceId": "inv_00000008",
+  "signal": {
+    "error_code": "SUCCESS_RATE_DROP",
+    "issuer_down": false,
+    "latency_ms": 3556,
+    "recovered": true,
+    "success_rate": 0.98
+  }
+}
