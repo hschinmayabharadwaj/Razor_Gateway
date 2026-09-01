@@ -1,4 +1,4 @@
-# Revenue Recovery Agent (multi-flow)
+# Revenue Recovery Agent (multi-flow) — Go port
 
 An AI agent that **detects revenue at risk, determines the right intervention,
 and executes a bounded recovery workflow** across 7 recovery flows —
@@ -8,6 +8,12 @@ Recovery is a **state machine**, not a chatbot. Every money-moving / stopping
 decision is made by **named policy rules** (`policy_engine`) — never by an LLM.
 The only LLM seam is generating human-readable customer copy **after** a
 decision has already been made.
+
+This repository is a **from-scratch Go port** of the original TypeScript
+implementation, preserving architecture, behavior, and outputs exactly
+(deterministic 60-event batch, hash-chained audit log, tuning sandbox, risk
+prescore, security stack). A single package `rz` (one file per module) plus
+8 command-line drivers under `cmd/`.
 
 **Why this exists (60-second pitch).** Revenue leaks across payment failures,
 checkout drops, failed subscriptions, overdue receivables, UPI mandate failures,
@@ -34,46 +40,47 @@ live tamper demo below make that the story a judge can see in under a minute.
 
 ## Architecture
 
+The Go port lives in `go/` as a single package `rz` (module `razor_gateway/go`),
+with one file per original TS module:
+
 ```
-src/
-  flows/types.ts       # unified domain: FlowType, states, narrowed taxonomy, audit schema
-  data/generateFlows.ts# 60 synthetic normalized events -> data/flows/*.json
-  diagnosis/classify.ts# deterministic classify(event)->reason_bucket per flow (no LLM)
-  decisions/
-    rules.ts           # NAMED stopping rules (pure, unit-tested; tunable vs locked)
-    engines.ts         # pure per-flow decision functions
-    stateMachine.ts    # pure state transition + audit entry
-  execution/
-    flows.ts           # execute the decided action (retry / contact / voice / incentive)
-    copy.ts            # LLM copy seam (ONLY post-decision text generation)
-  audit/
-    store.ts           # append-only JSONL audit log (auto hash-chains)
-    chain.ts           # sha256 hash-chain primitives + verifyChain
-    verify.ts          # CLI: npm run verify:audit
-  policy/
-    naivePolicy.ts     # deliberately-naive baseline (no safety rules)
-    compare.ts         # REAL vs NAIVE + compliance violation counting
-    config.ts          # TUNABLE vs LOCKED rule separation
-    sandbox.ts         # tunable sweep backtester + locked-rule invariant
-  risk/
-    riskScore.ts       # pure multi-factor predictor (named factors, no black box)
-    prescore.ts        # retroactive predict-before-fail report + audit emission
-  security/
-    webhook.ts         # HMAC-SHA256 webhook signature verification (Razorpay scheme)
-    auth.ts            # access control (deny-by-default role matrix)
-    redact.ts          # PII redaction for log / exception read surfaces
-    anchor.ts          # external append-only anchor for the hash chain
-    llm.ts             # LLM output validation (customer-facing seam)
-    secrets.ts         # env-only, fail-closed secrets (never committed)
-  metrics/index.ts     # metrics computed FROM the audit log
-  dashboard/table.ts   # audit-log table + metrics view
-  batch/runner.ts      # unified orchestrator (per-customer touch caps)
-  index.ts             # demo: batch + metrics + walkthroughs
-  compare-demo.ts      # CLI: npm run compare:policy
-  prescore-demo.ts     # CLI: npm run prescore
-  sandbox-demo.ts      # CLI: npm run sandbox
-  security-demo.ts     # CLI: npm run security
-  e2e.ts               # CLI: npm run demo (everything end to end)
+go/
+  cmd/
+    gen-events        # generate the deterministic 60-event batch -> data/flows/*.json
+    run-batch         # full batch run -> audit log + metrics + table + exceptions
+    verify-audit      # verify the tamper-evident hash chain
+    compare-policy    # REAL vs NAIVE policy comparison + compliance lift
+    prescore          # prevention layer: predict-before-fail report
+    sandbox           # tunable sweep backtester + locked-rule invariant
+    security          # security posture demo (webhook/auth/redaction/anchor/LLM/secrets)
+    demo              # walkthroughs: mandate_revoked, NPCI window, checkout incentive
+  rz/
+    types.go          # unified domain: FlowType, states, narrowed taxonomy, audit schema
+    generate.go       # deterministic PRNG (mulberry32, seed 20260201) -> 60 events
+    classify.go       # classify(event)->reason_bucket per flow (no LLM)
+    rules.go          # NAMED stopping rules (pure, unit-tested; tunable vs locked)
+    engines.go        # pure per-flow decision functions
+    statemachine.go   # pure state transition + audit entry
+    execution.go      # execute the decided action (retry / contact / voice / incentive)
+    copy.go           # LLM copy seam (ONLY post-decision text generation)
+    store.go          # append-only JSONL audit log (auto hash-chains)
+    chain.go          # sha256 hash-chain primitives + verifyChain
+    naive.go          # deliberately-naive baseline (no safety rules)
+    compare.go        # REAL vs NAIVE + compliance violation counting
+    config.go         # TUNABLE vs LOCKED rule separation
+    sandbox.go        # tunable sweep backtester + locked-rule invariant
+    riskscore.go      # pure multi-factor predictor (named factors, no black box)
+    prescore.go       # retroactive predict-before-fail report + audit emission
+    webhook.go        # HMAC-SHA256 webhook signature verification (Razorpay scheme)
+    auth.go           # access control (deny-by-default role matrix)
+    redact.go         # PII redaction for log / exception read surfaces
+    anchor.go         # external append-only anchor for the hash chain
+    llm.go            # LLM output validation (customer-facing seam)
+    secrets.go        # env-only, fail-closed secrets (never committed)
+    metrics.go        # metrics computed FROM the audit log
+    table.go          # audit-log table + metrics view
+    runner.go         # unified orchestrator (per-customer touch caps)
+  rz/*_test.go        # 6 test suites, 71 tests
 ```
 
 ## Stopping rules (all named + unit tested first)
@@ -105,35 +112,35 @@ the existing schema — no existing field is changed.
 - `hash` = `sha256(prevHash + stable_stringify(entry minus hash fields))`.
   Keys are sorted before stringify so the hash reproduces exactly.
 
-Pure functions in `src/audit/chain.ts`:
-- `appendAuditEntry(log, newEntryData)` — pure append (no mutation).
-- `verifyChain(log)` — recomputes every hash and returns the first broken index.
+Pure functions in `go/rz/chain.go`:
+- `AppendAuditEntry(log, newEntryData)` — pure append (no mutation).
+- `VerifyChain(log)` — recomputes every hash and returns the first broken index.
 
 ```bash
-npm run run:batch     # writes a hash-chained audit log
-npm run verify:audit  # ✓ chain verified, N entries, no tampering detected
+go run ./cmd/run-batch     # writes a hash-chained audit log
+go run ./cmd/verify-audit  # ✓ chain verified, N entries, no tampering detected
 ```
 
-**Demo trick:** run the batch, `verify:audit` passes. Edit one line of
-`data/audit.log.jsonl` (e.g. flip a `decision`), re-run `verify:audit` — it
+**Demo trick:** run the batch, `verify-audit` passes. Edit one line of
+`go/data/audit.log.jsonl` (e.g. flip a `decision`), re-run `verify-audit` — it
 prints `✗ chain broken at entry N`.
 
 ## Naive-policy baseline & compliance lift
 
-`src/policy/` runs the REAL policy engine and a deliberately-NAIVE one over the
+`go/rz/` runs the REAL policy engine and a deliberately-NAIVE one over the
 IDENTICAL 60-event batch, and measures the compliance lift:
 
-- `naivePolicy.ts` — a baseline with NO safety rules: blindly retries every
-  failure every 3 days up to 10 attempts regardless of reason bucket (including
+- `naive.go` — a baseline with NO safety rules: blindly retries every failure
+  every 3 days up to 10 attempts regardless of reason bucket (including
   `fraud_flagged` and `mandate_revoked`), no touch cap, no DNC/quiet-hours check,
   no PTP suppression.
-- `compare.ts` — runs both, then re-checks **every naive action against the real
+- `compare.go` — runs both, then re-checks **every naive action against the real
   rule predicates** (`isFraudFlagged`, `isMandateRevoked`, `isDoNotCall`,
   `atTouchCap`, `atMaxRetryAttempts`, `hasActivePromiseToPay`) and counts the
   exact violations the naive policy would commit. Nothing is hand-waved.
 
 ```bash
-npm run compare:policy
+go run ./cmd/compare-policy
 ```
 
 Outputs a table + a data-computed one-line takeaway, e.g.:
@@ -154,17 +161,17 @@ structurally cannot make."*
 The recovery layer is, by definition, reacting after a leak. This module is the
 bridge to becoming a **risk manager** instead of a cleanup crew.
 
-`src/risk/riskScore.ts` scores every customer BEFORE the attempt using **named,
+`go/rz/riskscore.go` scores every customer BEFORE the attempt using **named,
 inspectable factors** — `prior_decline_count_90d`, `mandate_age_days`,
 `days_since_last_decline`, `prior_chargeback_count_90d`, `card_expiry_within_60d`.
 No black box: each factor contributes visible points, sum → `low|medium|high`.
 
-`src/risk/prescore.ts` runs that score **retroactively over the same batch** and
+`go/rz/prescore.go` runs that score **retroactively over the same batch** and
 compares pre-score against the ACTUAL outcome (drawn from the verified audit
 log), then emits each prescore as a hash-chained audit entry (zero schema change).
 
 ```bash
-npm run prescore
+go run ./cmd/prescore
 ```
 
 Output (computed, not claimed):
@@ -180,7 +187,7 @@ auditable, portable version of it, for the recovery layer.*
 
 ## Backtest sandbox: tunables move, LOCKED rules don't
 
-`src/policy/config.ts` separates rules into two kinds:
+`go/rz/config.go` separates rules into two kinds:
 
 - **TUNABLE** — business levers (`maxRetryAttempts`, `maxTouchesPerCustomer`,
   `checkoutReminderCap`, `maxVoiceCalls`, `cartIncentiveThreshold`,
@@ -190,10 +197,10 @@ auditable, portable version of it, for the recovery layer.*
   `mandate_revoked_escalate`, `voice_do_not_call`, TRAI `quiet_hours`). Their
   predicates accept NO tunable, so no configuration can disable them.
 
-`src/policy/sandbox.ts` re-runs the SAME batch under a tunable sweep:
+`go/rz/sandbox.go` re-runs the SAME batch under a tunable sweep:
 
 ```bash
-npm run sandbox
+go run ./cmd/sandbox
 ```
 
 ```
@@ -208,44 +215,46 @@ high_incentive 61.5%     81       2.53/rec  0
 ## One command runs everything
 
 ```bash
-npm run demo
+go run ./cmd/demo
 ```
 
-Chains: real batch → real-vs-naive comparison → sandbox sweep → risk prescore →
-**live in-memory tamper demo** (`verifyChain` flips a `decision` and shows
-`✗ BROKEN at entry N`) → **security posture walkthrough**. Every number on
-screen is computed from this run.
+The demo CLI runs the real batch plus walkthroughs proving correct behavior:
+- **mandate_revoked** handled gracefully (refuses to retry, escalates),
+- **mandate retry** sequenced within the NPCI retry window (India-specific),
+- **checkout abandonment** recovered cost-aware (spam guard + incentive threshold).
+
+`compare-policy`, `prescore`, and `sandbox` each run their own stage of the full
+story as standalone CLIs (the original TS `e2e` bundled all of them together).
 
 ## Security posture (honest, tested — not claimed)
 
-`src/security/` is a level above the typical hackathon submission, but we state
-the boundaries plainly rather than over-claim. `npm run security` demos each
-defense live, and `npm test` proves them.
+The security stack mirrors the TS original module-for-module. `go run
+./cmd/security` demos each defense live, and `go test` proves them.
 
-**Implemented & tested (`tests/security.test.ts`, 28 cases):**
-- **Webhook signature verification** (`webhook.ts`) — Razorpay's `t=<ts>|s=<hmac>`
+**Implemented & tested (`go/rz/security_test.go`, 25 cases):**
+- **Webhook signature verification** (`webhook.go`) — Razorpay's `t=<ts>|s=<hmac>`
   HMAC-SHA256 scheme, plus 5-minute replay-window check. No event is trusted as
   an input until it passes this gate. Constant-time compare; signature mismatch,
   replay, and tampered-body are all rejected.
-- **Access control, deny-by-default** (`auth.ts`) — every privileged action
+- **Access control, deny-by-default** (`auth.go`) — every privileged action
   (`run_batch`, `tune_sandbox`, `read_audit_log`, …) is gated behind a
   caller-supplied credential + a role matrix (`operator`/`admin`/`auditor`).
   Unknown credentials and missing keys are rejected before any action.
-- **PII redaction** (`redact.ts`) — the hash chain protects *integrity*, not
+- **PII redaction** (`redact.go`) — the hash chain protects *integrity*, not
   *confidentiality*; this module masks phone/email/name/customer-id at every read
   surface (dashboard, exception list, auditor export).
-- **External anchor** (`anchor.ts`) — a raw chain can be silently rebuilt by
+- **External anchor** (`anchor.go`) — a raw chain can be silently rebuilt by
   someone with write access; this publishes a root hash to an append-only sink
   outside the log, and a rebuilt chain fails the tail/root check.
-- **LLM output validation** (`llm.ts`) — the LLM never decides, but its copy
+- **LLM output validation** (`llm.go`) — the LLM never decides, but its copy
   still reaches customers. Injection patterns, `<script>`/`<iframe>`, control
   chars, over-length, internal/localhost URLs, and PII leakage are rejected at the
   boundary.
-- **Secrets policy** (`secrets.ts`) — fail-closed `requireSecret()` from env only,
+- **Secrets policy** (`secrets.go`) — fail-closed `requireSecret()` from env only,
   never hard-coded, never printed (`redactSecret()`).
-- **Sandbox isolation** (`execution/flows.ts`) — `ExecutionMode == 'sandbox'`
+- **Sandbox isolation** (`execution.go`) — `ExecutionMode == 'sandbox'`
   structurally cannot call a live/test-mode charge API; charge-capable flows are
-  pure in-process simulations. `/demo`, `/compare`, `/sandbox` all run sandboxed.
+  pure in-process simulations. `/demo`, `/sandbox` all run sandboxed.
 
 **Known gaps — stated honestly (the pitch names these before a judge does):**
 - Auth is a *stub* (API-key allow-list), not a real identity/session layer.
@@ -257,29 +266,39 @@ defense live, and `npm test` proves them.
 
 ## Commands
 
+Build and test:
+
 ```bash
-npm run gen:events    # generate 60 synthetic events across 7 flows
-npm test              # 101 unit tests (rules, hash chain, compliance, prescore, sandbox, security)
-npm run typecheck     # tsc --noEmit
-npm run build         # compile TypeScript
-npm run run:batch     # full batch run + metrics + audit table + walkthroughs
-npm run verify:audit  # verify the tamper-evident hash chain
-npm run compare:policy# REAL vs NAIVE policy comparison + compliance lift
-npm run prescore      # prevention layer: predict-before-fail report
-npm run sandbox       # tunable sweep, locked rules invariant
-npm run security      # security posture demo (webhook/auth/redaction/anchor/LLM/secrets)
-npm run demo          # everything above, end to end
+cd go
+export PATH="$HOME/go-toolchain/go/bin:$PATH"   # adjust to your Go install
+go build ./...
+go vet ./...
+go test ./...                     # 6 suites, 71 tests
+```
+
+CLIs (run from `go/` after generation):
+
+```bash
+go run ./cmd/gen-events    # generate the deterministic 60-event batch -> data/flows/
+go run ./cmd/run-batch     # full batch run + metrics + audit table + exceptions
+go run ./cmd/verify-audit  # verify the tamper-evident hash chain
+go run ./cmd/compare-policy# REAL vs NAIVE policy comparison + compliance lift
+go run ./cmd/prescore      # prevention layer: predict-before-fail report
+go run ./cmd/sandbox       # tunable sweep, locked rules invariant
+go run ./cmd/security      # security posture demo (webhook/auth/redaction/anchor/LLM/secrets)
+go run ./cmd/demo          # batch walkthroughs (mandate_revoked, NPCI window, checkout incentive)
 ```
 
 ## Demo output
 
-`npm run run:batch` prints measured results over the 60-event batch:
+`go run ./cmd/run-batch` prints measured results over the 60-event batch:
 - recovery rate (`recovered_amount / total_at_risk_amount`),
 - cost per recovery (`touches_sent / recovered_count`),
 - per-flow breakdown,
 - full exception list (escalated / abandoned / waiting) with reasons and rule fired,
 - an LLM exception summary for a human reviewer, and
-- walkthroughs proving correct behavior:
-  - **mandate_revoked** handled gracefully (refuses to retry, escalates),
-  - **mandate retry** sequenced within the NPCI retry window (India-specific),
-  - **checkout abandonment** recovered cost-aware (spam guard + incentive threshold).
+- a hash-chain verification (`✓ chain verified: 188 entries, no tampering detected`).
+
+Measured parity with the original TypeScript run is exact: 188 audit entries,
+₹851208.52 recovered of ₹1384523.97 at risk (61.5%), 32 recovered, 81 touches,
+65 naive-policy compliance violations.
