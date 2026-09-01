@@ -1,0 +1,19 @@
+{
+  "eventId": "failed_subscription-00026",
+  "flow": "failed_subscription",
+  "customerId": "cust_fai_26",
+  "customerName": "Vivaan Sharma",
+  "customerPhone": "+91 9730977731",
+  "customerEmail": "vivaan.sharma71@yahoo.com",
+  "amount": 7044457,
+  "currency": "INR",
+  "occurredAt": 1787616000000,
+  "invoiceId": "inv_00000026",
+  "signal": {
+    "error_code": "CARD_EXPIRED",
+    "error_description": "expired",
+    "error_reason": "expired_card",
+    "mandate_revoked": false,
+    "payment_method": "emandate"
+  }
+}

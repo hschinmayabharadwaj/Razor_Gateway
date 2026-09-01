@@ -1,0 +1,17 @@
+{
+  "eventId": "promise_to_pay-00057",
+  "flow": "promise_to_pay",
+  "customerId": "cust_pro_57",
+  "customerName": "Aarav Reddy",
+  "customerPhone": "+91 9775375408",
+  "customerEmail": "aarav.reddy38@outlook.com",
+  "amount": 2808237,
+  "currency": "INR",
+  "occurredAt": 1787616000000,
+  "invoiceId": "inv_00000057",
+  "signal": {
+    "amount": 232161,
+    "ptp_date": 1788048000000,
+    "ptp_status": "broken"
+  }
+}

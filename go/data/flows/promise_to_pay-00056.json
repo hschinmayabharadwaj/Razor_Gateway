@@ -1,0 +1,17 @@
+{
+  "eventId": "promise_to_pay-00056",
+  "flow": "promise_to_pay",
+  "customerId": "cust_pro_56",
+  "customerName": "Meera Menon",
+  "customerPhone": "+91 9900170949",
+  "customerEmail": "meera.menon45@gmail.com",
+  "amount": 3634217,
+  "currency": "INR",
+  "occurredAt": 1787788800000,
+  "invoiceId": "inv_00000056",
+  "signal": {
+    "amount": 3394588,
+    "ptp_date": 1788480000000,
+    "ptp_status": "committed"
+  }
+}

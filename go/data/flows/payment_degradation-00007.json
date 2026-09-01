@@ -1,0 +1,19 @@
+{
+  "eventId": "payment_degradation-00007",
+  "flow": "payment_degradation",
+  "customerId": "cust_pay_7",
+  "customerName": "Vivaan Reddy",
+  "customerPhone": "+91 9671292872",
+  "customerEmail": "vivaan.reddy59@yahoo.com",
+  "amount": 828028,
+  "currency": "INR",
+  "occurredAt": 1788134400000,
+  "invoiceId": "inv_00000007",
+  "signal": {
+    "error_code": "SUCCESS_RATE_DROP",
+    "issuer_down": false,
+    "latency_ms": 292,
+    "recovered": true,
+    "success_rate": 0.7000110808061436
+  }
+}

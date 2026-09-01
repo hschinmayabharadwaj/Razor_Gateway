@@ -1,0 +1,19 @@
+{
+  "eventId": "checkout_abandonment-00016",
+  "flow": "checkout_abandonment",
+  "customerId": "cust_che_16",
+  "customerName": "Kabir Singh",
+  "customerPhone": "+91 9704716285",
+  "customerEmail": "kabir.singh42@yahoo.com",
+  "amount": 1101547,
+  "currency": "INR",
+  "occurredAt": 1788220800000,
+  "invoiceId": "inv_00000016",
+  "signal": {
+    "abandoned_at_step": "complete",
+    "cart_value": 201563,
+    "error": "gateway_timeout",
+    "price_mismatch": false,
+    "visits": 5
+  }
+}

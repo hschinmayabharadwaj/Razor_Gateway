@@ -1,0 +1,17 @@
+{
+  "eventId": "b2b_receivables-00037",
+  "flow": "b2b_receivables",
+  "customerId": "cust_b2b_37",
+  "customerName": "Vihaan Reddy",
+  "customerPhone": "+91 9568957947",
+  "customerEmail": "vihaan.reddy79@yahoo.com",
+  "amount": 7868790,
+  "currency": "INR",
+  "occurredAt": 1788048000000,
+  "invoiceId": "inv_00000037",
+  "signal": {
+    "dispute_note": "Billing dispute filed",
+    "disputed": true,
+    "overdue_days": 35
+  }
+}

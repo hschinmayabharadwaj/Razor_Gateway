@@ -1,0 +1,19 @@
+{
+  "eventId": "checkout_abandonment-00011",
+  "flow": "checkout_abandonment",
+  "customerId": "cust_che_11",
+  "customerName": "Vivaan Patel",
+  "customerPhone": "+91 9709712878",
+  "customerEmail": "vivaan.patel79@yahoo.com",
+  "amount": 403750,
+  "currency": "INR",
+  "occurredAt": 1788220800000,
+  "invoiceId": "inv_00000011",
+  "signal": {
+    "abandoned_at_step": "payment",
+    "cart_value": 184450,
+    "error": "",
+    "price_mismatch": false,
+    "visits": 2
+  }
+}

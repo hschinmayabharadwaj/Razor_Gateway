@@ -1,0 +1,17 @@
+{
+  "eventId": "b2b_receivables-00032",
+  "flow": "b2b_receivables",
+  "customerId": "cust_b2b_32",
+  "customerName": "Diya Gupta",
+  "customerPhone": "+91 9541545814",
+  "customerEmail": "diya.gupta44@yahoo.com",
+  "amount": 3951336,
+  "currency": "INR",
+  "occurredAt": 1787702400000,
+  "invoiceId": "inv_00000032",
+  "signal": {
+    "dispute_note": "",
+    "disputed": false,
+    "overdue_days": 65
+  }
+}

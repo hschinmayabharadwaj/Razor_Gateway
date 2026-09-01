@@ -1,0 +1,19 @@
+{
+  "eventId": "checkout_abandonment-00018",
+  "flow": "checkout_abandonment",
+  "customerId": "cust_che_18",
+  "customerName": "Vihaan Iyer",
+  "customerPhone": "+91 9693240327",
+  "customerEmail": "vihaan.iyer32@outlook.com",
+  "amount": 467691,
+  "currency": "INR",
+  "occurredAt": 1788048000000,
+  "invoiceId": "inv_00000018",
+  "signal": {
+    "abandoned_at_step": "otp",
+    "cart_value": 1056494,
+    "error": "",
+    "price_mismatch": false,
+    "visits": 3
+  }
+}
