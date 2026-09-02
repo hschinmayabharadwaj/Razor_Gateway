@@ -3,6 +3,7 @@ package rz
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,7 +13,8 @@ import (
 
 // Synthetic batch generator for ALL 7 recovery flows.
 // Writes normalized FlowEvents to data/flows/*.json (one per event).
-// Deterministic PRNG (mulberry32, seed 20260201) so the demo is reproducible.
+// Deterministic PRNG (mulberry32, default seed 20260201) so the canonical demo
+// is reproducible; seed/count are configurable via GenOptions.
 
 type prng struct {
 	s uint32
@@ -44,12 +46,98 @@ var firstNames = []string{"Aarav", "Diya", "Rohan", "Meera", "Kabir", "Ananya", 
 var lastNames = []string{"Sharma", "Patel", "Reddy", "Iyer", "Nair", "Gupta", "Singh", "Verma", "Rao", "Menon", "Joshi", "Mehta"}
 var emailDomains = []string{"gmail.com", "yahoo.com", "outlook.com"}
 
-// GenerateEvents reproduces the deterministic 60-event batch (7 flows).
-func GenerateEvents(nowMs int64) []*FlowEvent {
-	if nowMs == 0 {
-		nowMs = time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+// DefaultGenSeed is the parity-locked PRNG seed for the canonical batch.
+const DefaultGenSeed uint32 = 20260201
+
+// DefaultFlowCounts is the canonical 8/10/12/10/8/6/6 distribution (60
+// events) that reproduces the parity-locked batch byte-for-byte.
+var DefaultFlowCounts = map[FlowType]int{
+	FlowPaymentDegradation:  8,
+	FlowCheckoutAbandonment: 10,
+	FlowFailedSubscription:  12,
+	FlowB2BReceivables:      10,
+	FlowMandateRetry:        8,
+	FlowHinglishVoice:       6,
+	FlowPromiseToPay:        6,
+}
+
+// GenOptions controls the synthetic batch generator. Zero values select the
+// canonical defaults (seed 20260201, 2026-09-01T00:00:00Z base, 60 events).
+type GenOptions struct {
+	Seed        uint32           // PRNG seed (0 => DefaultGenSeed)
+	NowMs       int64            // occurrence base time (0 => Sept-1 midnight UTC)
+	CountByFlow map[FlowType]int // exact per-flow counts (overrides Count)
+	Count       int              // total events; flows scaled proportionally (0 => 60)
+}
+
+// ScaleFlowCounts distributes total events across all 7 flows proportionally
+// to the canonical 8/10/12/10/8/6/6 distribution, always summing to exactly
+// total (largest-remainder rounding). total <= 0 returns the canonical counts.
+func ScaleFlowCounts(total int) map[FlowType]int {
+	out := map[FlowType]int{}
+	if total <= 0 {
+		for f, n := range DefaultFlowCounts {
+			out[f] = n
+		}
+		return out
 	}
-	r := newPrng(20260201)
+	sum := 0
+	for _, n := range DefaultFlowCounts {
+		sum += n
+	}
+	remaining := total
+	for i, f := range FlowTypes {
+		if i == len(FlowTypes)-1 {
+			out[f] = remaining
+			break
+		}
+		share := int(math.Round(float64(total) * float64(DefaultFlowCounts[f]) / float64(sum)))
+		if share > remaining {
+			share = remaining
+		}
+		out[f] = share
+		remaining -= share
+	}
+	return out
+}
+
+func resolveCounts(opt GenOptions) map[FlowType]int {
+	out := map[FlowType]int{}
+	for f, n := range DefaultFlowCounts {
+		out[f] = n
+	}
+	if len(opt.CountByFlow) > 0 {
+		for f, n := range opt.CountByFlow {
+			out[f] = n
+		}
+		return out
+	}
+	if opt.Count > 0 && opt.Count != 60 {
+		return ScaleFlowCounts(opt.Count)
+	}
+	return out
+}
+
+// GenerateEventsWith is the full-configuration generator.
+func GenerateEventsWith(opt GenOptions) []*FlowEvent {
+	now := opt.NowMs
+	if now == 0 {
+		now = time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+	}
+	seed := opt.Seed
+	if seed == 0 {
+		seed = DefaultGenSeed
+	}
+	r := newPrng(seed)
+
+	counts := resolveCounts(opt)
+	nDeg := counts[FlowPaymentDegradation]
+	nChk := counts[FlowCheckoutAbandonment]
+	nSub := counts[FlowFailedSubscription]
+	nRec := counts[FlowB2BReceivables]
+	nMan := counts[FlowMandateRetry]
+	nVoi := counts[FlowHinglishVoice]
+	nPtp := counts[FlowPromiseToPay]
 
 	seq := 0
 	var events []*FlowEvent
@@ -73,7 +161,7 @@ func GenerateEvents(nowMs int64) []*FlowEvent {
 			CustomerPhone: phone,
 			Amount:        amount,
 			Currency:      "INR",
-			OccurredAt:    nowMs - int64(r.intn(0, 7))*86400000,
+			OccurredAt:    now - int64(r.intn(0, 7))*86400000,
 			InvoiceID:     fmt.Sprintf("inv_%08d", seq),
 		}
 		if len(signal) > 0 {
@@ -83,7 +171,7 @@ func GenerateEvents(nowMs int64) []*FlowEvent {
 	}
 
 	// ---------- Flow 1: payment_degradation ----------
-	for i := 0; i < 8; i++ {
+	for i := 0; i < nDeg; i++ {
 		kind := i % 3
 		var rate float64 = 0.98
 		if kind == 0 {
@@ -111,7 +199,7 @@ func GenerateEvents(nowMs int64) []*FlowEvent {
 
 	// ---------- Flow 2: checkout_abandonment ----------
 	checkoutSteps := []string{"payment", "address", "otp", "complete"}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < nChk; i++ {
 		step := r.pick(checkoutSteps)
 		visits := r.intn(1, 5)
 		priceMismatch := i%5 == 0
@@ -141,7 +229,7 @@ func GenerateEvents(nowMs int64) []*FlowEvent {
 	}
 	subBuckets := []string{"insufficient_funds", "card_expired", "mandate_revoked", "bank_declined_transient", "auth_3ds_abandoned", "fraud_flagged"}
 	payMethods := []string{"card", "upi", "emandate"}
-	for i := 0; i < 12; i++ {
+	for i := 0; i < nSub; i++ {
 		b := subBuckets[i%6]
 		e := subErrors[i%6]
 		amount := int64(r.intn(49900, 9990000))
@@ -157,7 +245,7 @@ func GenerateEvents(nowMs int64) []*FlowEvent {
 
 	// ---------- Flow 4: b2b_receivables ----------
 	receivableDays := []int{25, 40, 45, 65, 75, 90, 130, 10}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < nRec; i++ {
 		disputed := i%3 == 0
 		days := 35
 		if !disputed {
@@ -176,9 +264,9 @@ func GenerateEvents(nowMs int64) []*FlowEvent {
 	}
 
 	// ---------- Flow 5: mandate_retry (NPCI / UPI Autopay) ----------
-	for i := 0; i < 8; i++ {
+	for i := 0; i < nMan; i++ {
 		revoked := i%4 == 0
-		windowStart := nowMs - 86400000
+		windowStart := now - 86400000
 		amount := int64(r.intn(100000, 5000000))
 		errorCode := "MANDATE_REVOKED"
 		if !revoked {
@@ -197,7 +285,7 @@ func GenerateEvents(nowMs int64) []*FlowEvent {
 
 	// ---------- Flow 6: hinglish_voice ----------
 	voiceStates := []string{"missed", "call_back_requested", "unreachable"}
-	for i := 0; i < 6; i++ {
+	for i := 0; i < nVoi; i++ {
 		state := r.pick(voiceStates)
 		amount := int64(r.intn(20000, 4000000))
 		hour := 14
@@ -213,16 +301,16 @@ func GenerateEvents(nowMs int64) []*FlowEvent {
 
 	// ---------- Flow 7: promise_to_pay ----------
 	ptpStatuses := []string{"committed", "committed", "missed", "broken"}
-	for i := 0; i < 6; i++ {
+	for i := 0; i < nPtp; i++ {
 		status := r.pick(ptpStatuses)
 		var ptpDate int64
 		switch status {
 		case "committed":
-			ptpDate = nowMs + int64(r.intn(1, 4))*86400000
+			ptpDate = now + int64(r.intn(1, 4))*86400000
 		case "missed":
-			ptpDate = nowMs - 86400000
+			ptpDate = now - 86400000
 		default:
-			ptpDate = nowMs - 2*86400000
+			ptpDate = now - 2*86400000
 		}
 		amount := int64(r.intn(50000, 5000000))
 		amountInSignal := int64(r.intn(50000, 5000000))
@@ -234,6 +322,12 @@ func GenerateEvents(nowMs int64) []*FlowEvent {
 	}
 
 	return events
+}
+
+// GenerateEvents reproduces the deterministic canonical 60-event batch (7
+// flows), byte-identical to the TS ground truth (same PRNG seed + clock base).
+func GenerateEvents(nowMs int64) []*FlowEvent {
+	return GenerateEventsWith(GenOptions{NowMs: nowMs, Seed: DefaultGenSeed})
 }
 
 // CountsByFlow tallies events per flow.

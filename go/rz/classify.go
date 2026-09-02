@@ -34,6 +34,7 @@ var razorpayErrorCodes = map[string]ReasonBucket{
 	"FRAUD_DETECTED":                ReasonFraudFlagged,
 	"RISK_DECLINE":                  ReasonFraudFlagged,
 	"AUTH_FAILED":                   ReasonAuth3dsAbandoned,
+	"DIRECTAUTHPARAM_FAILED":        ReasonAuth3dsAbandoned, // canonical Razorpay code
 	"CUSTOMER_ABANDONED":            ReasonAuth3dsAbandoned,
 	"AUTH_ACCEPTED_LATER":           ReasonAuth3dsAbandoned,
 	"SUCCESS_RATE_DROP":             ReasonSuccessRateDrop,
