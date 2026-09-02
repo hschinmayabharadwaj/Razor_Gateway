@@ -15,8 +15,10 @@ import (
 // Tamper-evidence: Append chains each entry to the previous one by computing
 // prevHash + hash BEFORE writing, so the log is a hash chain.
 type AuditStore struct {
-	mu sync.Mutex
-	f  string
+	mu       sync.Mutex
+	f        string
+	claimed  map[string]bool
+	hydrated bool
 }
 
 // NewAuditStore creates (or opens) the JSONL audit log at logFile.
@@ -67,6 +69,44 @@ func (s *AuditStore) All() ([]AuditEntry, error) {
 	return readAllEntries(s.f)
 }
 
+// Claim is an atomic "at-most-once" reservation for an event ID. It returns
+// true exactly once per event ID for the lifetime of the store (including IDs
+// already present in the log when the store is opened, so a restarted process
+// still refuses to re-execute them). The check-and-mark are serialized by the
+// store mutex, which makes concurrent duplicate deliveries safe: exactly one
+// caller wins, every other caller is told the event was already processed.
+func (s *AuditStore) Claim(eventID string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.hydrateLocked(); err != nil {
+		return false, err
+	}
+	if s.claimed[eventID] {
+		return false, nil
+	}
+	s.claimed[eventID] = true
+	return true, nil
+}
+
+// hydrateLocked rebuilds the claimed set from the persisted log once.
+func (s *AuditStore) hydrateLocked() error {
+	if s.hydrated {
+		return nil
+	}
+	if s.claimed == nil {
+		s.claimed = map[string]bool{}
+	}
+	entries, err := readAllEntries(s.f)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		s.claimed[e.EventID] = true
+	}
+	s.hydrated = true
+	return nil
+}
+
 // Clear removes the log file.
 func (s *AuditStore) Clear() error {
 	s.mu.Lock()
@@ -75,6 +115,8 @@ func (s *AuditStore) Clear() error {
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	s.claimed = nil
+	s.hydrated = false
 	return nil
 }
 

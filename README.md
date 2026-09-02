@@ -26,6 +26,44 @@ deterministic engine whose stopping decisions and every audit entry are provable
 measured, and hash-chained, not self-reported. The naive-vs-real comparison and
 live tamper demo below make that the story a judge can see in under a minute.
 
+## End-to-end flow
+
+Every box maps to real code in this repo (file = `go/rz/*.go`):
+
+```
+[Merchant checkout/subscription event]
+        │
+        ▼
+[Razorpay Webhook] ──HMAC-SHA256 verify──> reject if invalid/replayed   (webhook.go)
+        │ (valid, verified event)
+        ▼
+[Idempotency check] ──already processed?──> short-circuit, no duplicate action   (store.go Claim — atomic, restart-safe)
+        │ (new event)
+        ▼
+[classify()] — deterministic, no LLM — reason_bucket assigned           (classify.go)
+        │
+        ▼
+[Risk Prescore] — pure factor scoring — logged BEFORE decision          (riskscore.go, prescore.go)
+        │
+        ▼
+[Policy Engine / State Machine] — named rules evaluated in fixed order:
+    fraud? → suppress          mandate_revoked? → escalate            (rules.go, engines.go,
+    at_touch_cap? → abandon    at_retry_max? → escalate                 statemachine.go)
+    active_PTP? → suppress     else → retry/contact/execute
+        │
+        ▼
+[Execution layer] — idempotency-keyed call to Razorpay API (retry/charge)  (execution.go)
+        │
+        ▼
+[LLM copy seam] — ONLY generates customer-facing text, validated for injection  (copy.go, llm.go)
+        │
+        ▼
+[Audit log] — append-only, hash-chained, externally anchored, PII-redacted at read  (store.go, chain.go, anchor.go, redact.go)
+        │
+        ▼
+[Metrics + Exception report] — computed FROM the log, never asserted    (metrics.go, copy.go)
+```
+
 ## The 7 flows
 
 | Flow | Detects | Intervenes with |
@@ -56,18 +94,18 @@ go/
     demo              # walkthroughs: mandate_revoked, NPCI window, checkout incentive
   rz/
     types.go          # unified domain: FlowType, states, narrowed taxonomy, audit schema
-    generate.go       # deterministic PRNG (mulberry32, seed 20260201) -> 60 events
+    generate.go       # deterministic PRNG (mulberry32, seed 20260201) -> configurable batch
     classify.go       # classify(event)->reason_bucket per flow (no LLM)
     rules.go          # NAMED stopping rules (pure, unit-tested; tunable vs locked)
     engines.go        # pure per-flow decision functions
     statemachine.go   # pure state transition + audit entry
     execution.go      # execute the decided action (retry / contact / voice / incentive)
     copy.go           # LLM copy seam (ONLY post-decision text generation)
-    store.go          # append-only JSONL audit log (auto hash-chains)
+    store.go          # append-only JSONL audit log (auto hash-chains) + atomic idempotency Claim
     chain.go          # sha256 hash-chain primitives + verifyChain
     naive.go          # deliberately-naive baseline (no safety rules)
     compare.go        # REAL vs NAIVE + compliance violation counting
-    config.go         # TUNABLE vs LOCKED rule separation
+    config.go         # TUNABLE vs LOCKED separation + JSON tunables-file loader
     sandbox.go        # tunable sweep backtester + locked-rule invariant
     riskscore.go      # pure multi-factor predictor (named factors, no black box)
     prescore.go       # retroactive predict-before-fail report + audit emission
@@ -79,8 +117,13 @@ go/
     secrets.go        # env-only, fail-closed secrets (never committed)
     metrics.go        # metrics computed FROM the audit log
     table.go          # audit-log table + metrics view
-    runner.go         # unified orchestrator (per-customer touch caps)
-  rz/*_test.go        # 6 test suites, 71 tests
+    runner.go         # unified orchestrator (idempotency gate + per-customer touch caps)
+  rz/*_test.go        # 11 test files: 86 tests + 5 fuzz targets (see Testing section)
+  rz/fuzz_test.go     # native Go fuzz targets: classify / parse / verify / redact / LLM
+  rz/contract_test.go # golden contracts: Razorpay payloads, error-code table, HMAC KAT, redaction
+  rz/idempotency_test.go # at-most-once gate: replay suppress + concurrent delivery race test
+  rz/generator_test.go   # canonical 60-event parity lock + scaling/per-flow/seed knobs
+  rz/config_test.go      # tunables-file loader: apply / reject unknown + locked keys
 ```
 
 ## Stopping rules (all named + unit tested first)
@@ -212,6 +255,87 @@ high_incentive 61.5%     81       2.53/rec  0
 ✓ Locked safety/compliance rules never budge across any tunable sweep
 ```
 
+## Tunables from a config file (compliance-sourced, not code-sourced)
+
+Thresholds are business/compliance numbers and should live beside their
+rationale, not inside code. `go/tunables.example.json` ships the current
+defaults; `run-batch` and `compare-policy` accept `-config`:
+
+```bash
+go run ./cmd/run-batch -config tunables.example.json
+```
+
+`LoadTunablesFile()` (config.go) applies them atomically. The key whitelist is
+the **entire** tunability surface, so an unknown key or a typo fails loudly
+instead of silently doing nothing — and the LOCKED invariants (fraud,
+mandate_revoked, DNC, TRAI quiet-hours) have **no config key at all**, so no
+config file can ever override them.
+
+| Key | Unit | Default | Rationale (source) |
+|-----|------|---------|--------------------|
+| `max_retry_attempts` | attempts | 3 | retry budget; dwell on stuck accounts is a refund/fraud risk |
+| `max_touches_cap` | touches/customer/batch | 3 | blast-radius cap; customer-experience ceiling |
+| `checkout_reminder_cap` | reminders | 2 | spam guard (checkout remediation) |
+| `voice_call_cap` | calls | 2 | voice outreach ceiling |
+| `cart_incentive_threshold` | paise | 50000 | no discount on junk carts |
+| `ptp_supervisor_threshold` | paise | 2000000 | high-value PTPs need human sign-off (dual control) |
+| `mandate_retry_window` | days | 3 | NPCI / UPI Autopay retry window |
+| `receivable_tier2` | days | 60 | net30 → net60 collection boundary |
+
+## Concurrency & idempotency (at-most-once)
+
+A webhook receiver that has money-moving actions must be **idempotent**:
+the same event delivered twice (network retry, audit-replay, malicious copy)
+must not charge twice. The engine enforces at-most-once end-to-end:
+
+- `AuditStore.Claim(eventId)` (store.go) is an **atomic** check-and-mark,
+  serialized by the store mutex. The first caller wins; every later caller —
+  including concurrent goroutines — is told the event was already processed.
+- The claim horizon **survives process restarts**: a store opened over an
+  existing log hydrates all processed IDs from it, so a restarted process still
+  refuses to re-execute an old event.
+- A duplicate delivery is **audited, not ignored**: one
+  `duplicate_suppress` entry is chained so the log proves dedup happened (and a
+  malicious duplicate can't hide evidence).
+- Metrics ignore `duplicate_suppress` rows (they stay in the chain for
+  integrity but are not business activity), so replay can't distort recovery
+  numbers.
+
+Testing: `idempotency_test.go` re-delivers the whole 60-event batch and asserts
+zero re-execution, and fires the same event from 16 goroutines at once,
+asserting exactly one execution. `go test -race` on a 64-bit toolchain
+exercises the mutex for real (see Commands).
+
+## Failure modes & fallbacks (honest table)
+
+| Component | Failure | Impact | Fallback | Tested? |
+|-----------|---------|--------|----------|---------|
+| Razorpay webhook | bad/replayed signature | forged event enters engine | reject before classify (`webhook.go`) | yes |
+| Webhook timestamp | outside 5-min skew | replay legitimately doubles a charge | reject as expired (bank transfer already settling is safe) | yes |
+| Raw payload shape | not the normalized envelope | event silently dropped | `ParseTrustedEvent` returns `ok=false` → 400 to caller; adapter is the documented merchant-side seam | yes (contract) |
+| Duplicate eventId | double charge / double touch | charged twice | `Claim` at-most-once + `duplicate_suppress` audit row | yes |
+| JSONL audit write | disk full / i/o error | decision already taken but not logged | `Append` returns error **before** `ExecuteAction` runs in the same step (audit-before-action ordering in runner.go:86→93); batch aborts, no partial execution | yes (ordering asserted by construction) |
+| Store corruption | mid-write crash | chain tail invalid | append-only JSONL; a corrupted/truncated line fails JSON parse and surfaces as a loud error; `verify-audit` flags any mismatch | no (crash-injection not simulated) |
+| LLM copy | prompt injection / PII / overlong | malformed customer message | `llm.go` fails closed (reject-or-censor at boundary); LLM never decides | yes |
+| Retry loop | runaway retries | infinite touches | fixed `max_retry_attempts` + `max_batch_attempts` caps | yes |
+| Tunable config | bad key / non-integer | silently ignored typo | `LoadTunablesFile` errors on unknown key; atomic apply | yes |
+| Concurrent deliveries | last-write-wins double exec | double charge | atomic `Claim` (mutex-serialized) | yes |
+| Race detector build | 32-bit gcc on Windows | `-race` won't link | needs 64-bit gcc/clang (TDM-GCC) or Linux; mutex story verified by inspection + concurrency test | env-limited |
+
+## Threat model (STRIDE walk-through)
+
+| Threat | Where it hits | Mitigation |
+|--------|---------------|------------|
+| **Spoofing** | webhook → engine | HMAC-SHA256 signature + timestamp skew (webhook.go); deny-by-default auth on all CLI actions (auth.go) |
+| **Tampering** | audit log | hash chain + external anchor (chain.go, anchor.go); PII redaction does not weaken integrity |
+| **Repudiation** | "who decided to charge?" | every transition is a signed-by-chaining (prevHash/hash) audit row naming `rule_fired` + `actor` |
+| **Info disclosure** | exception list / dashboard | presentation-time redaction of PII (redact.go); secrets env-only + `redactSecret()` on output |
+| **DoS** | replay flood / huge body | 5-min skew window; duplicate events short-circuit to a no-op audit row instead of re-executing; body size not yet bounded (gap below) |
+| **Elevation** | config file | tunables whitelist — LOCKED compliance rules have no key to override (config.go) |
+
+Residual, explicitly out of scope: real identity/session layer, TLS at the
+edge, DPDP data-retention/deletion, anomaly detection on engine behavior.
+
 ## One command runs everything
 
 ```bash
@@ -259,8 +383,15 @@ The security stack mirrors the TS original module-for-module. `go run
 **Known gaps — stated honestly (the pitch names these before a judge does):**
 - Auth is a *stub* (API-key allow-list), not a real identity/session layer.
 - No rate-limiting / replay protection on retry *execution* (charge attempts).
+- Webhook body size is not bounded (a giant body is read before the HMAC gate).
 - No DPDP data-retention/deletion story for the audit log.
 - No anomaly detection watching the policy engine's own behavior.
+- Raw Razorpay payloads are **not** consumed directly: `ParseTrustedEvent`
+  expects the normalized `{event_id|id, flow|entity.type}` envelope; the
+  raw-payload → envelope **adapter is the merchant-side seam** and is a
+  documented gap by design (contract tests pin this split).
+- The render dashboard (auditor/admin views, live tamper demo) is a listed
+  roadmap item, not yet built.
 - The webhook secret here is an injected demo value; production uses
   `requireSecret('RAZORPAY_WEBHOOK_SECRET')`.
 
@@ -273,16 +404,37 @@ cd go
 export PATH="$HOME/go-toolchain/go/bin:$PATH"   # adjust to your Go install
 go build ./...
 go vet ./...
-go test ./...                     # 6 suites, 71 tests
+go test ./rz/                     # 11 test files: 86 tests + 5 fuzz seed-corpora
+```
+
+Native fuzzing (each target also runs its seeds during the normal `go test`
+above; extend with `-fuzztime`):
+
+```bash
+go test -fuzz=FuzzClassify          -fuzztime=30s ./rz/
+go test -fuzz=FuzzParseTrustedEvent -fuzztime=30s ./rz/
+go test -fuzz=FuzzVerifyWebhook     -fuzztime=30s ./rz/
+go test -fuzz=FuzzRedactPII         -fuzztime=30s ./rz/
+go test -fuzz=FuzzValidateLLMCopy   -fuzztime=30s ./rz/
+```
+
+Race detection (`-race`) requires a 64-bit C compiler on Windows (the shipped
+MinGW is 32-bit and fails at `runtime/cgo`). On a 64-bit toolchain or Linux:
+
+```bash
+go test -race ./rz/               # mutex-guarded store + at-most-once claim under real races
 ```
 
 CLIs (run from `go/` after generation):
 
 ```bash
-go run ./cmd/gen-events    # generate the deterministic 60-event batch -> data/flows/
-go run ./cmd/run-batch     # full batch run + metrics + audit table + exceptions
+go run ./cmd/gen-events                                        # canonical 60-event batch -> data/flows/
+go run ./cmd/gen-events -seed 777 -count 120 -out /tmp/flows   # configurable batch (flows scale proportionally)
+go run ./cmd/run-batch                                         # full batch run + metrics + audit table + exceptions
+go run ./cmd/run-batch -config tunables.example.json           # thresholds from a compliance-sourced file
 go run ./cmd/verify-audit  # verify the tamper-evident hash chain
 go run ./cmd/compare-policy# REAL vs NAIVE policy comparison + compliance lift
+go run ./cmd/compare-policy -config tunables.example.json
 go run ./cmd/prescore      # prevention layer: predict-before-fail report
 go run ./cmd/sandbox       # tunable sweep, locked rules invariant
 go run ./cmd/security      # security posture demo (webhook/auth/redaction/anchor/LLM/secrets)

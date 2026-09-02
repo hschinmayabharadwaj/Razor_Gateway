@@ -1,0 +1,10 @@
+{
+  "max_retry_attempts": 3,
+  "max_touches_cap": 3,
+  "checkout_reminder_cap": 2,
+  "voice_call_cap": 2,
+  "cart_incentive_threshold": 50000,
+  "ptp_supervisor_threshold": 2000000,
+  "mandate_retry_window": 3,
+  "receivable_tier2": 60
+}

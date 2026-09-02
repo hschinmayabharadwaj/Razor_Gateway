@@ -1,5 +1,11 @@
 package rz
 
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
 // Sandbox / backtesting configuration. Two kinds of rule:
 //
 //	TUNABLE  — business-lever caps a merchant/operator may dial. Recovery
@@ -50,4 +56,92 @@ var tunableRuleIds = []string{
 	"ptp_supervisor_threshold",
 	"mandate_retry_window",
 	"receivable_tier2",
+}
+
+// LoadTunablesFile reads a JSON file of named tunable overrides and applies
+// them atomically. The key whitelist (tunableRuleIds) is the tunability
+// surface: the LOCKED invariants (fraud, mandate_revoked, DNC, quiet-hours)
+// have no config key at all, so a config file can never override them. Unknown
+// keys and non-integer values are rejected loudly rather than silently ignored.
+//
+// Example (go/tunables.example.json):
+//
+//	{ "max_retry_attempts": 3, "ptp_supervisor_threshold": 2000000 }
+//
+// Values are in the unit each rule natively uses: retry counts in attempts,
+// caps in touches/calls/reminders, thresholds in paise, windows in days.
+func LoadTunablesFile(path string) (TunableConfig, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return tunables, err
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return tunables, fmt.Errorf("config %s: %w", path, err)
+	}
+	for k := range m {
+		if !isTunableKey(k) {
+			return tunables, fmt.Errorf("config %s: unknown or locked key %q", path, k)
+		}
+	}
+	for k, v := range m {
+		if err := applyTunableKey(k, v); err != nil {
+			return tunables, fmt.Errorf("config %s: %w", path, err)
+		}
+	}
+	return tunables, nil
+}
+
+func isTunableKey(k string) bool {
+	for _, v := range tunableRuleIds {
+		if v == k {
+			return true
+		}
+	}
+	return false
+}
+
+func applyTunableKey(k string, v json.RawMessage) error {
+	var iVal int
+	var i64Val int64
+	switch k {
+	case "max_retry_attempts", "max_touches_cap", "checkout_reminder_cap", "voice_call_cap",
+		"mandate_retry_window", "receivable_tier2":
+		if err := json.Unmarshal(v, &iVal); err != nil {
+			return fmt.Errorf("key %q must be an integer", k)
+		}
+		if iVal < 0 {
+			return fmt.Errorf("key %q cannot be negative", k)
+		}
+	case "cart_incentive_threshold", "ptp_supervisor_threshold":
+		if err := json.Unmarshal(v, &i64Val); err != nil {
+			return fmt.Errorf("key %q must be an integer (paise)", k)
+		}
+		if i64Val < 0 {
+			return fmt.Errorf("key %q cannot be negative", k)
+		}
+	default:
+		return fmt.Errorf("unknown tunable key %q", k)
+	}
+	SetTunableField(func(t *TunableConfig) {
+		switch k {
+		case "max_retry_attempts":
+			t.MaxRetryAttempts = iVal
+		case "max_touches_cap":
+			t.MaxTouchesPerCustomer = iVal
+		case "checkout_reminder_cap":
+			t.CheckoutReminderCap = iVal
+		case "voice_call_cap":
+			t.MaxVoiceCalls = iVal
+		case "mandate_retry_window":
+			t.MandateWindowDays = iVal
+		case "receivable_tier2":
+			t.ReceivableTier2Days = iVal
+		case "cart_incentive_threshold":
+			t.CartIncentiveThreshold = i64Val
+		case "ptp_supervisor_threshold":
+			t.PtpSupervisorThreshold = i64Val
+		}
+	})
+	return nil
 }

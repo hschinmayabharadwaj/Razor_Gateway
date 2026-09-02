@@ -55,6 +55,12 @@ func ComputeMetrics(log []AuditEntry) Metrics {
 	terminal := map[string]AuditEntry{}
 	seen := map[string]bool{}
 	for _, e := range log {
+		// Idempotency-suppression rows stay in the chain (integrity) but are
+		// not business activity: they must not overwrite the event's terminal
+		// state or inflate per-flow counts/at-risk totals on replay.
+		if e.RuleFired == RuleDuplicateSuppress {
+			continue
+		}
 		fm := byFlow[e.Flow]
 		if !seen[e.EventID] {
 			fm.Events++

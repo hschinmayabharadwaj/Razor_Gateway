@@ -47,6 +47,36 @@ func RunBatch(events []*FlowEvent, audit *AuditStore, opts RunnerOpts) (BatchRes
 	now := opts.Now
 
 	for _, event := range events {
+		// Idempotency gate: a duplicate eventId must never re-execute or
+		// re-touch. Claim is atomic (serialized by the store mutex) and survives
+		// restarts because it is hydrated from the existing log, so concurrent
+		// or replayed webhook deliveries are at-most-once.
+		firstSeen, err := audit.Claim(event.EventID)
+		if err != nil {
+			return BatchResult{}, err
+		}
+		if !firstSeen {
+			dup := AuditEntry{
+				EventID:      event.EventID,
+				Timestamp:    Iso(now),
+				Flow:         event.Flow,
+				ReasonBucket: Classify(event),
+				RuleFired:    RuleDuplicateSuppress,
+				Decision:     DecisionSuppress,
+				Actor:        ActorPolicyEngine,
+				Outcome:      "Duplicate eventId already processed; suppressed by idempotency gate (at-most-once)",
+				State:        AgentSuppressed,
+				CustomerID:   event.CustomerID,
+				InvoiceID:    event.InvoiceID,
+				Amount:       i64p(event.Amount),
+				Currency:     event.Currency,
+			}
+			if err := audit.Append(dup); err != nil {
+				return BatchResult{}, err
+			}
+			continue
+		}
+
 		if used >= maxBatch {
 			batchAttemptLimitHit = true
 			break

@@ -138,6 +138,7 @@ const (
 	RulePtpMissedEscalate       RuleId = "ptp_missed_escalate"
 	RuleQuietHours              RuleId = "quiet_hours"
 	RuleBatchMaxAttempts        RuleId = "batch_max_attempts"
+	RuleDuplicateSuppress       RuleId = "duplicate_suppress"
 )
 
 // Decision is the engine's chosen action.

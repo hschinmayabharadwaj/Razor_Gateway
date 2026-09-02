@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,10 +10,19 @@ import (
 )
 
 func main() {
+	configFile := flag.String("config", "", "JSON tunables file (see tunables.example.json)")
+	flag.Parse()
+
 	events, err := rz.LoadEvents("data/flows")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "load events:", err)
 		os.Exit(1)
+	}
+	if *configFile != "" {
+		if _, err := rz.LoadTunablesFile(*configFile); err != nil {
+			fmt.Fprintln(os.Stderr, "tunables:", err)
+			os.Exit(1)
+		}
 	}
 	now := rz.BatchNow()
 
