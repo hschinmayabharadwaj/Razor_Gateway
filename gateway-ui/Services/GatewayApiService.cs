@@ -69,7 +69,7 @@ public class GatewayApiService : IGatewayApi
         _factory = factory;
     }
 
-    public string BaseUrl => "http://localhost:8090";
+    public string BaseUrl => Environment.GetEnvironmentVariable("GO_BACKEND_URL") ?? "http://localhost:8090";
     public string CurrentRole => _role;
     public string CurrentKey => RoleKeys[_role];
 

@@ -166,10 +166,8 @@ public sealed class PaymentAuditService
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly IHttpClientFactory _clientFactory;
     private readonly ILogger<PaymentAuditService> _logger;
+    private readonly string _goStreamBaseUrl;
     private string _previousHash = "0000000000000000000000000000000000000000000000000000000000000000";
-
-    // Go stream-server base URL for forwarding payment events into the live audit stream.
-    private const string GoStreamBaseUrl = "http://localhost:8090";
 
     public PaymentAuditService(IHostEnvironment environment, IConfiguration configuration, IHttpClientFactory clientFactory, ILogger<PaymentAuditService> logger)
     {
@@ -177,6 +175,7 @@ public sealed class PaymentAuditService
         _path = Path.GetFullPath(Path.Combine(environment.ContentRootPath, configured));
         _clientFactory = clientFactory;
         _logger = logger;
+        _goStreamBaseUrl = configuration["GO_BACKEND_URL"] ?? "http://localhost:8090";
     }
 
     public async Task AppendAsync(string eventId, string eventType, string state, object details, CancellationToken cancellationToken)
@@ -216,7 +215,7 @@ public sealed class PaymentAuditService
                 state,
                 details = JsonSerializer.Serialize(details)
             };
-            using var request = new HttpRequestMessage(HttpMethod.Post, $"{GoStreamBaseUrl}/payment-event")
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{_goStreamBaseUrl}/payment-event")
             {
                 Content = JsonContent.Create(payload)
             };
