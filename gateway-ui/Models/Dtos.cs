@@ -22,6 +22,8 @@ public record AuditEntryDto(
     [property: JsonPropertyName("currency")] string? Currency,
     [property: JsonPropertyName("attempt")] int? Attempt,
     [property: JsonPropertyName("channel")] string? Channel,
+    [property: JsonPropertyName("customerId")] string? CustomerId,
+    [property: JsonPropertyName("invoiceId")] string? InvoiceId,
     [property: JsonPropertyName("triggeredBy")] string? TriggeredBy,
     [property: JsonPropertyName("prevHash")] string? PrevHash,
     [property: JsonPropertyName("hash")] string? Hash
