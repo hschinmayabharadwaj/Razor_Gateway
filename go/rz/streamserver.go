@@ -6,8 +6,62 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 )
+
+// allowedOrigins returns the CORS allow-list from the ALLOWED_ORIGIN env var
+// (comma-separated). If unset, all origins are allowed (demo default — harden
+// before production by setting ALLOWED_ORIGIN to the Blazor UI origin).
+func allowedOrigins() map[string]bool {
+	raw := strings.TrimSpace(os.Getenv("ALLOWED_ORIGIN"))
+	if raw == "" {
+		return map[string]bool{"*": true}
+	}
+	out := map[string]bool{}
+	for _, o := range strings.Split(raw, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			out[o] = true
+		}
+	}
+	return out
+}
+
+func originAllowed(origins map[string]bool, origin string) bool {
+	if origins["*"] {
+		return true
+	}
+	return origins[origin]
+}
+
+// withCORS wraps a handler with CORS headers so browser clients (and any future
+// in-browser caller) can reach the API + SSE stream cross-origin.
+func withCORS(next http.Handler) http.Handler {
+	origins := allowedOrigins()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" && originAllowed(origins, origin) {
+			if origins["*"] {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Add("Vary", "Origin")
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-API-Key")
+			w.Header().Set("Access-Control-Expose-Headers", "X-API-Key")
+			w.Header().Set("Access-Control-Max-Age", "600")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		// Don't open up the SSE stream to every origin in a browser unless told.
+		// The server still enforces deny-by-default X-API-Key auth on every route.
+		next.ServeHTTP(w, r)
+	})
+}
 
 // streamServer is a minimal stdlib net/http server (no framework) that exposes
 // the live audit stream, chain verification, and the JSON adapter surfaces for
@@ -46,7 +100,7 @@ func StartStreamServer(audit *AuditStore, hub *StreamHub, addr string) (*http.Se
 	mux.HandleFunc("/payment-event", s.handlePaymentEvent)
 	mux.HandleFunc("/admin/action", s.handleAdminAction)
 
-	srv := &http.Server{Addr: addr, Handler: mux}
+	srv := &http.Server{Addr: addr, Handler: withCORS(mux)}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
