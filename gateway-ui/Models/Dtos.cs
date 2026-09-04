@@ -18,6 +18,11 @@ public record AuditEntryDto(
     [property: JsonPropertyName("actor")] string? Actor,
     [property: JsonPropertyName("outcome")] string? Outcome,
     [property: JsonPropertyName("state")] string? State,
+    [property: JsonPropertyName("amount")] long? Amount,
+    [property: JsonPropertyName("currency")] string? Currency,
+    [property: JsonPropertyName("attempt")] int? Attempt,
+    [property: JsonPropertyName("channel")] string? Channel,
+    [property: JsonPropertyName("triggeredBy")] string? TriggeredBy,
     [property: JsonPropertyName("prevHash")] string? PrevHash,
     [property: JsonPropertyName("hash")] string? Hash
 );
@@ -170,4 +175,24 @@ public record SandboxDto(
     [property: JsonPropertyName("headline")] string? Headline,
     [property: JsonPropertyName("selectedScenario")] string? SelectedScenario,
     [property: JsonPropertyName("lockedRules")] List<string>? LockedRules
+);
+
+// ----------------------------------------------------------------------------
+// Admin intervention
+// ----------------------------------------------------------------------------
+
+public record AdminActionRequest(
+    [property: JsonPropertyName("eventId")] string EventId,
+    [property: JsonPropertyName("action")] string Action,
+    [property: JsonPropertyName("channel")] string? Channel = null
+);
+
+public record AdminActionResult(
+    [property: JsonPropertyName("ok")] bool Ok,
+    [property: JsonPropertyName("eventId")] string? EventId,
+    [property: JsonPropertyName("decision")] string? Decision,
+    [property: JsonPropertyName("state")] string? State,
+    [property: JsonPropertyName("outcome")] string? Outcome,
+    [property: JsonPropertyName("refusedBy")] string? RefusedBy,
+    [property: JsonPropertyName("refusedReason")] string? RefusedReason
 );
