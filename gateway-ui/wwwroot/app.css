@@ -71,3 +71,23 @@ button, a { transition: color .2s ease, background-color .2s ease, border-color 
 @media (max-width: 1100px) { .dashboard-shell { padding: 32px 28px; } .stat-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 760px) { .dashboard-heading { display: block; }.heading-actions { margin-top: 22px; }.content-grid { grid-template-columns: 1fr; }.dashboard-footer { flex-wrap: wrap; gap: 10px 18px; }.dashboard-footer > span:first-child { width: 100%; }.activity-table { min-width: 700px; } }
 @media (max-width: 480px) { .dashboard-shell { padding: 26px 16px; }.stat-grid { grid-template-columns: 1fr; }.panel { padding: 16px; }.donut-row { gap: 15px; margin-left: 0; margin-right: 0; }.donut { width: 120px; height: 120px; }.donut::before { width: 78px; height: 78px; }.heading-actions .btn { flex: 1; } }
+
+.flow-bar-list { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; max-height: 230px; overflow-y: auto; padding-right: 4px; }
+.flow-bar-item { display: flex; flex-direction: column; gap: 5px; }
+.flow-bar-info { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; }
+.flow-bar-name { font-weight: 700; color: var(--ink); }
+.flow-bar-stats { color: #a0a8a4; font: 500 10px 'DM Mono', monospace; display: flex; gap: 8px; }
+.flow-bar-stats strong { color: var(--ink); }
+.flow-bar-track { height: 6px; background: #edf2ee; border-radius: 3px; overflow: hidden; }
+.flow-bar-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
+.flow-bar-fill.coral { background: var(--coral); }
+.flow-bar-fill.green { background: var(--green); }
+.flow-bar-fill.teal { background: #4c98a0; }
+.flow-bar-fill.amber { background: #ebbd5c; }
+.route-alert.route-alert-tamper { background: #fff1f0; color: #dc3545; }
+.route-alert.route-alert-tamper small { color: #b02a37; }
+.dot-recovered { background: var(--green); }
+.dot-escalated { background: var(--coral); }
+.dot-suppressed { background: #4c98a0; }
+.dot-abandoned { background: #ebbd5c; }
+.table-empty-row { text-align: center; padding: 24px !important; color: #a0a8a4; }

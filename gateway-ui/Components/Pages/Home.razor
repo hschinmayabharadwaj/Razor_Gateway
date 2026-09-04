@@ -1,43 +1,649 @@
-﻿@page "/"
+@page "/"
+@using GatewayUI.Models
 @using GatewayUI.Services
+@using System.Globalization
 @inject IGatewayApi Api
+@inject AuditStreamService AuditStream
+@inject IJSRuntime JS
+@implements IDisposable
 
 <PageTitle>Overview | razorops</PageTitle>
 
 <div class="dashboard-shell page-reveal">
 	<div class="dashboard-heading">
-		<div><div class="eyebrow">Payments command center <span class="eyebrow-line"></span> 04 Sep 2026</div><h1>Good morning, Ananya<span class="heading-dot">.</span></h1><p class="heading-copy">One clear view of every payment, every route, every recovery.</p></div>
-		<div class="heading-actions"><button class="btn btn-quiet" @onclick="ToggleLive"><span class="live-dot"></span> @(_liveMode ? "Live mode" : "Paused")</button><button class="btn btn-coral" @onclick="CreatePayment" disabled="@_paymentInProgress"><span>+</span> @(_paymentInProgress ? "Opening checkout..." : "Create payment")</button><span class="payment-feedback">@_paymentMessage</span></div>
+		<div>
+			<div class="eyebrow">Payments command center <span class="eyebrow-line"></span> @DateTime.Now.ToString("dd MMM yyyy")</div>
+			<h1>@GetGreeting(), @GetRoleTitle()<span class="heading-dot">.</span></h1>
+			<p class="heading-copy">Real-time telemetry across revenue recovery, payment volume, and cryptographic chain audit.</p>
+		</div>
+		<div class="heading-actions">
+			<button class="btn btn-quiet" @onclick="ToggleLive">
+				<span class="live-dot" style="@LiveDotStyle"></span> @(_liveMode ? "Live mode" : "Paused")
+			</button>
+			<button class="btn btn-quiet" @onclick="LoadDataAsync" title="Refresh metrics">
+				<span>&#8635;</span> Refresh
+			</button>
+			<button class="btn btn-coral" @onclick="CreatePayment" disabled="@_paymentInProgress">
+				<span>+</span> @(_paymentInProgress ? "Opening checkout..." : "Create payment")
+			</button>
+			@if (!string.IsNullOrEmpty(_paymentMessage))
+			{
+				<span class="payment-feedback">@_paymentMessage</span>
+			}
+		</div>
 	</div>
 
 	<div class="stat-grid stagger-in">
-		<div class="stat-card stat-card-featured"><div class="stat-card-top"><span>Gross processed</span><span class="trend up">&#8593; 12.8%</span></div><strong class="stat-value">&#8377; 24.86L</strong><div class="stat-foot"><span>vs &#8377; 22.04L last period</span><span class="sparkline coral-spark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div></div>
-		<div class="stat-card"><div class="stat-card-top"><span>Success rate</span><span class="trend up">&#8593; 0.6%</span></div><strong class="stat-value">98.42<span class="value-unit">%</span></strong><div class="stat-foot"><span>Across 18,492 attempts</span><span class="sparkline green-spark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div></div>
-		<div class="stat-card"><div class="stat-card-top"><span>Pending settlements</span><span class="trend neutral">Today</span></div><strong class="stat-value">&#8377; 8.42L</strong><div class="stat-foot"><span>Across 4 providers</span><span class="settlement-bars"><i></i><i></i><i></i><i></i></span></div></div>
-		<div class="stat-card"><div class="stat-card-top"><span>Refunds this month</span><span class="trend down">&#8595; 3.1%</span></div><strong class="stat-value">&#8377; 42.8K</strong><div class="stat-foot"><span>86 requests processed</span><span class="refund-icon">&#8617;</span></div></div>
+		<div class="stat-card stat-card-featured">
+			<div class="stat-card-top">
+				<span>Gross At-Risk</span>
+				<span class="trend up">Live</span>
+			</div>
+			<strong class="stat-value">@FormatRupees(_metrics?.TotalAtRiskRupees ?? 0)</strong>
+			<div class="stat-foot">
+				<span>Across @(_metrics?.TotalEvents ?? 0) total events</span>
+				<span class="sparkline coral-spark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+			</div>
+		</div>
+
+		<div class="stat-card">
+			<div class="stat-card-top">
+				<span>Recovery Rate</span>
+				<span class="trend up">@Pct(_metrics?.RecoveryRate ?? 0)</span>
+			</div>
+			<strong class="stat-value">@(((_metrics?.RecoveryRate ?? 0) * 100).ToString("0.0"))<span class="value-unit">%</span></strong>
+			<div class="stat-foot">
+				<span>@(_metrics?.RecoveredCount ?? 0) of @(_metrics?.TotalEvents ?? 0) recovered</span>
+				<span class="sparkline green-spark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+			</div>
+		</div>
+
+		<div class="stat-card">
+			<div class="stat-card-top">
+				<span>Recovered Revenue</span>
+				<span class="trend neutral">Net</span>
+			</div>
+			<strong class="stat-value">@FormatRupees(_metrics?.RecoveredRupees ?? 0)</strong>
+			<div class="stat-foot">
+				<span>Cost: @FormatRupees(_metrics?.CostPerRecovery ?? 0)/rec</span>
+				<span class="settlement-bars"><i></i><i></i><i></i><i></i></span>
+			</div>
+		</div>
+
+		<div class="stat-card">
+			<div class="stat-card-top">
+				<span>Escalated / Suppressed</span>
+				<span class="trend down">Exceptions</span>
+			</div>
+			<strong class="stat-value">@(_metrics?.EscalatedCount ?? 0)<span class="value-unit"> / @(_metrics?.SuppressedCount ?? 0)</span></strong>
+			<div class="stat-foot">
+				<span>@(_metrics?.Eligibility?.BlockedByCompliance ?? 0) compliance-blocked</span>
+				<span class="refund-icon">&#9670;</span>
+			</div>
+		</div>
 	</div>
 
 	<div class="content-grid stagger-in">
-		<section class="panel volume-panel"><div class="panel-header"><div><span class="panel-kicker">Performance</span><h2>Transaction volume</h2></div><div class="period-tabs"><button class="active">7D</button><button>30D</button><button>90D</button></div></div><div class="chart-summary"><strong>&#8377; 24,86,240</strong><span class="trend up">&#8593; 12.8%</span><span class="summary-muted">processed volume</span></div><div class="volume-chart" aria-label="Transaction volume chart"><div class="chart-y-axis"><span>4L</span><span>3L</span><span>2L</span><span>1L</span><span>0</span></div><div class="chart-area"><div class="chart-gridlines"><i></i><i></i><i></i><i></i><i></i></div><div class="chart-fill"></div><div class="chart-line"></div><div class="chart-points"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="chart-x-axis"><span>29 Aug</span><span>30</span><span>31</span><span>01 Sep</span><span>02</span><span>03</span><span>04</span></div></div></div></section>
+		<section class="panel volume-panel">
+			<div class="panel-header">
+				<div>
+					<span class="panel-kicker">Performance</span>
+					<h2>Recovery flow breakdown</h2>
+				</div>
+				<div class="period-tabs">
+					<button class="@(_selectedFlowTab == "all" ? "active" : "")" @onclick="SetTabAll">All</button>
+					<button class="@(_selectedFlowTab == "volume" ? "active" : "")" @onclick="SetTabVolume">Volume</button>
+					<button class="@(_selectedFlowTab == "rate" ? "active" : "")" @onclick="SetTabRate">Rate</button>
+				</div>
+			</div>
 
-		<section class="panel route-panel"><div class="panel-header"><div><span class="panel-kicker">Routing health</span><h2>Provider mix</h2></div><button class="more-button" title="More provider options" aria-label="More provider options">&#8943;</button></div><div class="donut-row"><div class="donut"><div><strong>18,492</strong><span>payments</span></div></div><div class="provider-legend"><div><span class="legend-dot razorpay-dot"></span><span>Razorpay</span><strong>46%</strong></div><div><span class="legend-dot stripe-dot"></span><span>Stripe</span><strong>28%</strong></div><div><span class="legend-dot cashfree-dot"></span><span>Cashfree</span><strong>16%</strong></div><div><span class="legend-dot payu-dot"></span><span>PayU</span><strong>10%</strong></div></div></div><div class="route-alert"><span>&#10003;</span><div><strong>Smart routing is healthy</strong><small>All fallback paths are active</small></div><span class="arrow">&#8594;</span></div></section>
+			<div class="chart-summary">
+				<strong>@FormatRupees(_metrics?.TotalAtRiskRupees ?? 0)</strong>
+				<span class="trend up">&#8593; @Pct(_metrics?.RecoveryRate ?? 0) recovery</span>
+				<span class="summary-muted">across active recovery flows</span>
+			</div>
+
+			<div class="flow-bar-list">
+				@if (_metrics?.ByFlow == null || _metrics.ByFlow.Count == 0)
+				{
+					<div class="table-empty-row">Loading flow metrics...</div>
+				}
+				else
+				{
+					@foreach (var kvp in GetSortedFlows())
+					{
+						var f = kvp.Value;
+						var rate = f.Events > 0 ? (f.RecoveredCount * 100.0) / f.Events : 0;
+						<div class="flow-bar-item">
+							<div class="flow-bar-info">
+								<span class="flow-bar-name">@FormatFlowName(kvp.Key)</span>
+								<span class="flow-bar-stats">
+									<strong>@FormatRupees(f.RecoveredRupees)</strong>
+									<span>(@f.RecoveredCount/@f.Events rec &middot; @f.Touches touches)</span>
+								</span>
+							</div>
+							<div class="flow-bar-track">
+								<div class="flow-bar-fill @GetFlowBarColor(kvp.Key)" style="@GetFlowWidthStyle(rate)"></div>
+							</div>
+						</div>
+					}
+				}
+			</div>
+		</section>
+
+		<section class="panel route-panel">
+			<div class="panel-header">
+				<div>
+					<span class="panel-kicker">Routing & Health</span>
+					<h2>Outcome distribution</h2>
+				</div>
+				<a href="recovery" class="more-button" title="View recovery progress" aria-label="View recovery progress">&#8943;</a>
+			</div>
+
+			<div class="donut-row">
+				<div class="donut" style="@DonutStyle">
+					<div>
+						<strong>@(_metrics?.TotalEvents ?? 0)</strong>
+						<span>events</span>
+					</div>
+				</div>
+				<div class="provider-legend">
+					<div>
+						<span class="legend-dot dot-recovered"></span>
+						<span>Recovered</span>
+						<strong>@FormatPct(_metrics?.RecoveredCount ?? 0, _metrics?.TotalEvents ?? 0)</strong>
+					</div>
+					<div>
+						<span class="legend-dot dot-escalated"></span>
+						<span>Escalated</span>
+						<strong>@FormatPct(_metrics?.EscalatedCount ?? 0, _metrics?.TotalEvents ?? 0)</strong>
+					</div>
+					<div>
+						<span class="legend-dot dot-suppressed"></span>
+						<span>Suppressed</span>
+						<strong>@FormatPct(_metrics?.SuppressedCount ?? 0, _metrics?.TotalEvents ?? 0)</strong>
+					</div>
+					<div>
+						<span class="legend-dot dot-abandoned"></span>
+						<span>Abandoned</span>
+						<strong>@FormatPct(_metrics?.AbandonedCount ?? 0, _metrics?.TotalEvents ?? 0)</strong>
+					</div>
+				</div>
+			</div>
+
+			@if (_isChainValid)
+			{
+				<div class="route-alert">
+					<span>&#10003;</span>
+					<div>
+						<strong>Audit hash chain is intact</strong>
+						<small>@_chainEntries entries cryptographically verified</small>
+					</div>
+					<a href="liveaudit" class="arrow" title="Inspect audit chain">&#8594;</a>
+				</div>
+			}
+			else
+			{
+				<div class="route-alert route-alert-tamper">
+					<span>&#9888;</span>
+					<div>
+						<strong>Audit chain broken</strong>
+						<small>Integrity failure detected at block #@_brokenAt</small>
+					</div>
+					<a href="liveaudit" class="arrow" title="Inspect audit chain">&#8594;</a>
+				</div>
+			}
+		</section>
 	</div>
 
-	<section class="panel activity-panel stagger-in"><div class="panel-header"><div><span class="panel-kicker">Live feed</span><h2>Recent transactions</h2></div><a class="panel-link" href="liveaudit">View live audit <span>&#8594;</span></a></div><div class="table-responsive"><table class="activity-table"><thead><tr><th>Payment</th><th>Customer</th><th>Provider</th><th>Amount</th><th>Status</th><th>Time</th></tr></thead><tbody>
-		<tr><td><span class="transaction-icon icon-green">&#8599;</span><strong>pay_8Xn2...K4mP</strong></td><td>Meera Shah</td><td><span class="provider-pill razorpay-pill">R</span> Razorpay</td><td><strong>&#8377; 12,400.00</strong></td><td><span class="status-pill success">Succeeded</span></td><td>2 min ago</td></tr>
-		<tr><td><span class="transaction-icon icon-blue">&#8599;</span><strong>pay_7Lm9...B2qA</strong></td><td>Arjun Menon</td><td><span class="provider-pill stripe-pill">S</span> Stripe</td><td><strong>&#8377; 8,750.00</strong></td><td><span class="status-pill success">Succeeded</span></td><td>8 min ago</td></tr>
-		<tr><td><span class="transaction-icon icon-amber">&#8635;</span><strong>pay_6Pc4...R8zN</strong></td><td>Northstar Labs</td><td><span class="provider-pill cashfree-pill">C</span> Cashfree</td><td><strong>&#8377; 34,200.00</strong></td><td><span class="status-pill pending">Processing</span></td><td>11 min ago</td></tr>
-		<tr><td><span class="transaction-icon icon-red">&#8595;</span><strong>rfnd_3Dz1...Q9vL</strong></td><td>Kavya Iyer</td><td><span class="provider-pill payu-pill">P</span> PayU</td><td><strong>&#8377; 2,100.00</strong></td><td><span class="status-pill refund">Refunded</span></td><td>22 min ago</td></tr>
-	</tbody></table></div></section>
-	<div class="dashboard-footer"><span><span class="footer-live"></span> Data refreshes automatically</span><span>API status <strong class="api-ok">Operational</strong> <span class="mini-check">&#10003;</span></span><span>Role <strong>@Api.CurrentRole</strong></span></div>
+	<section class="panel activity-panel stagger-in">
+		<div class="panel-header">
+			<div>
+				<span class="panel-kicker">Live feed</span>
+				<h2>Recent transactions</h2>
+			</div>
+			<a class="panel-link" href="liveaudit">View live audit <span>&#8594;</span></a>
+		</div>
+
+		<div class="table-responsive">
+			<table class="activity-table">
+				<thead>
+					<tr>
+						<th>Event</th>
+						<th>Flow</th>
+						<th>Customer / Invoice</th>
+						<th>Amount</th>
+						<th>Rule / Reason</th>
+						<th>Status</th>
+						<th>Time</th>
+					</tr>
+				</thead>
+				<tbody>
+					@if (RecentEntries.Count == 0)
+					{
+						<tr>
+							<td colspan="7" class="table-empty-row">
+								<span>Listening for audit events...</span>
+							</td>
+						</tr>
+					}
+					else
+					{
+						@foreach (var e in RecentEntries)
+						{
+							<tr>
+								<td>
+									<span class="transaction-icon @IconClass(e.State)">@IconGlyph(e.State)</span>
+									<code title="@e.EventId">@TruncateId(e.EventId)</code>
+								</td>
+								<td>
+									<span class="provider-pill @FlowPillClass(e.Flow)">@FlowInitial(e.Flow)</span>
+									@FormatFlowShort(e.Flow)
+								</td>
+								<td>
+									<span class="text-secondary">@(e.CustomerId ?? e.InvoiceId ?? e.TriggeredBy ?? "—")</span>
+								</td>
+								<td>
+									@if (e.Amount > 0)
+									{
+										<strong>@FormatCurrency(e.Amount.Value / 100.0)</strong>
+									}
+									else
+									{
+										<span class="text-muted">—</span>
+									}
+								</td>
+								<td>
+									<span class="badge bg-secondary">@(e.RuleFired ?? e.ReasonBucket ?? "—")</span>
+								</td>
+								<td>
+									<span class="status-pill @StatusClass(e.State)">@FormatState(e.State)</span>
+								</td>
+								<td>
+									<span>@FormatTimeAgo(e.Timestamp)</span>
+								</td>
+							</tr>
+						}
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
+
+	<div class="dashboard-footer">
+		<span>
+			<span class="footer-live" style="@LiveDotStyle"></span>
+			@(_liveMode ? "Data refreshes automatically" : "Stream paused")
+		</span>
+		<span>
+			API status
+			<strong class="@(_metricsError == null ? "api-ok" : "text-danger")">
+				@(_metricsError == null ? "Operational" : "Error")
+			</strong>
+			<span class="mini-check">&#10003;</span>
+		</span>
+		<span>Role <strong>@Api.CurrentRole</strong></span>
+	</div>
 </div>
 
 @code {
-	[Inject] private IJSRuntime JS { get; set; } = default!;
+	private MetricsDto? _metrics;
+	private bool _loading = true;
+	private string? _metricsError;
+
+	private bool _isChainValid = true;
+	private int _chainEntries;
+	private int? _brokenAt;
+
+	private readonly List<AuditEntryDto> _entries = new();
+	private long _subId = -1;
+	private bool _initialized;
+	private bool _refreshing;
+
 	private bool _liveMode = true;
 	private bool _paymentInProgress;
 	private string _paymentMessage = "";
+	private string _selectedFlowTab = "all";
+
+	private string LiveDotStyle => _liveMode ? "" : "background:#999;box-shadow:none";
+	private string DonutStyle => $"background: {GetDonutGradient()};";
+
+	private List<AuditEntryDto> RecentEntries => _entries.AsEnumerable().Reverse().Take(8).ToList();
+
+	protected override async Task OnInitializedAsync()
+	{
+		Api.RoleChanged += OnRoleChanged;
+		AuditStream.StatusChanged += OnStreamStatusChanged;
+		_subId = AuditStream.Subscribe(OnStreamEvent);
+
+		await LoadDataAsync();
+		_initialized = true;
+	}
+
+	public void Dispose()
+	{
+		Api.RoleChanged -= OnRoleChanged;
+		AuditStream.StatusChanged -= OnStreamStatusChanged;
+		if (_subId >= 0)
+		{
+			AuditStream.Unsubscribe(_subId);
+		}
+	}
+
+	private void OnRoleChanged()
+	{
+		InvokeAsync(async () =>
+		{
+			await LoadDataAsync();
+			StateHasChanged();
+		});
+	}
+
+	private void OnStreamStatusChanged(StreamStatus status)
+	{
+		InvokeAsync(StateHasChanged);
+	}
+
+	private void OnStreamEvent(StreamEvent ev)
+	{
+		InvokeAsync(() =>
+		{
+			switch (ev)
+			{
+				case AuditStreamEvent a:
+					_entries.Add(a.Entry);
+					if (_entries.Count > 200)
+					{
+						_entries.RemoveAt(0);
+					}
+					if (_initialized && _liveMode)
+					{
+						_ = RefreshMetricsThrottledAsync();
+					}
+					StateHasChanged();
+					break;
+
+				case ChainStatusStreamEvent c:
+					_isChainValid = c.Status.Valid;
+					_chainEntries = c.Status.Entries;
+					_brokenAt = c.Status.BrokenAt;
+					StateHasChanged();
+					break;
+			}
+		});
+	}
+
+	private async Task RefreshMetricsThrottledAsync()
+	{
+		if (_refreshing) return;
+		_refreshing = true;
+		try
+		{
+			await Task.Delay(500);
+			var res = await Api.GetMetricsAsync();
+			if (res.Ok && res.Data != null)
+			{
+				_metrics = res.Data;
+				StateHasChanged();
+			}
+		}
+		catch
+		{
+			// ignore transient stream update error
+		}
+		finally
+		{
+			_refreshing = false;
+		}
+	}
+
+	private async Task LoadDataAsync()
+	{
+		_loading = true;
+		try
+		{
+			var metricsTask = Api.GetMetricsAsync();
+			var chainTask = Api.GetChainStatusAsync();
+			await Task.WhenAll(metricsTask, chainTask);
+
+			var mRes = await metricsTask;
+			if (mRes.Ok && mRes.Data != null)
+			{
+				_metrics = mRes.Data;
+				_metricsError = null;
+			}
+			else
+			{
+				_metricsError = mRes.Error ?? (mRes.AuthDenied ? "Access denied" : "Failed to load metrics");
+			}
+
+			var cRes = await chainTask;
+			if (cRes.Ok && cRes.Data != null)
+			{
+				_isChainValid = cRes.Data.Valid;
+				_chainEntries = cRes.Data.Entries;
+				_brokenAt = cRes.Data.BrokenAt;
+			}
+		}
+		catch (Exception ex)
+		{
+			_metricsError = ex.Message;
+		}
+		finally
+		{
+			_loading = false;
+			StateHasChanged();
+		}
+	}
+
 	private void ToggleLive() => _liveMode = !_liveMode;
+
+	private void SetTabAll() => _selectedFlowTab = "all";
+	private void SetTabVolume() => _selectedFlowTab = "volume";
+	private void SetTabRate() => _selectedFlowTab = "rate";
+
+	private IEnumerable<KeyValuePair<string, FlowMetricsDto>> GetSortedFlows()
+	{
+		if (_metrics?.ByFlow == null) return Enumerable.Empty<KeyValuePair<string, FlowMetricsDto>>();
+
+		return _selectedFlowTab switch
+		{
+			"volume" => _metrics.ByFlow.OrderByDescending(kv => kv.Value.RecoveredRupees),
+			"rate" => _metrics.ByFlow.OrderByDescending(kv => kv.Value.Events > 0 ? (double)kv.Value.RecoveredCount / kv.Value.Events : 0),
+			_ => _metrics.ByFlow.OrderByDescending(kv => kv.Value.Events)
+		};
+	}
+
+	private static string GetFlowWidthStyle(double rate)
+	{
+		var width = Math.Min(100, Math.Max(4, rate));
+		return string.Format(CultureInfo.InvariantCulture, "width: {0:0.0}%;", width);
+	}
+
+	private string GetDonutGradient()
+	{
+		if (_metrics == null || _metrics.TotalEvents == 0)
+		{
+			return "conic-gradient(#edf2ee 0% 100%)";
+		}
+
+		var total = (double)_metrics.TotalEvents;
+		var pRecovered = (_metrics.RecoveredCount / total) * 100.0;
+		var pEscalated = pRecovered + (_metrics.EscalatedCount / total) * 100.0;
+		var pSuppressed = pEscalated + (_metrics.SuppressedCount / total) * 100.0;
+		var pAbandoned = pSuppressed + (_metrics.AbandonedCount / total) * 100.0;
+
+		return FormattableString.Invariant(
+			$"conic-gradient(var(--green) 0% {pRecovered:0.0}%, var(--coral) {pRecovered:0.0}% {pEscalated:0.0}%, #4c98a0 {pEscalated:0.0}% {pSuppressed:0.0}%, #ebbd5c {pSuppressed:0.0}% {pAbandoned:0.0}%, #bac3be {pAbandoned:0.0}% 100%)"
+		);
+	}
+
+	private static string GetGreeting()
+	{
+		var hour = DateTime.Now.Hour;
+		if (hour < 12) return "Good morning";
+		if (hour < 17) return "Good afternoon";
+		return "Good evening";
+	}
+
+	private string GetRoleTitle() => Api.CurrentRole switch
+	{
+		"admin" => "Administrator",
+		"operator" => "Operator",
+		"auditor" => "Auditor",
+		_ => string.IsNullOrEmpty(Api.CurrentRole) ? "Operator" : char.ToUpper(Api.CurrentRole[0]) + Api.CurrentRole[1..]
+	};
+
+	private static string FormatRupees(double rupees)
+	{
+		if (rupees >= 10_000_000)
+		{
+			return $"₹ {(rupees / 10_000_000.0):0.00} Cr";
+		}
+		if (rupees >= 100_000)
+		{
+			return $"₹ {(rupees / 100_000.0):0.00} L";
+		}
+		if (rupees >= 1_000)
+		{
+			return $"₹ {(rupees / 1_000.0):0.0} K";
+		}
+		return rupees.ToString("C0", new CultureInfo("en-IN"));
+	}
+
+	private static string FormatCurrency(double rupees)
+	{
+		return rupees.ToString("C2", new CultureInfo("en-IN"));
+	}
+
+	private static string Pct(double rate) => (rate * 100.0).ToString("0.0") + "%";
+
+	private static string FormatPct(int part, int total)
+	{
+		if (total <= 0) return "0%";
+		return ((part * 100.0) / total).ToString("0.0") + "%";
+	}
+
+	private static string FormatFlowName(string? flow) => flow switch
+	{
+		"failed_subscription" => "Failed Subscription",
+		"b2b_receivables" => "B2B Receivables",
+		"checkout_abandonment" => "Checkout Abandonment",
+		"hinglish_voice" => "Hinglish Voice Recovery",
+		"mandate_retry" => "Mandate Retry",
+		"payment_degradation" => "Payment Degradation",
+		"promise_to_pay" => "Promise to Pay (PTP)",
+		"payment_event" => "Live Payment Event",
+		_ => string.IsNullOrWhiteSpace(flow) ? "General" : CultureInfo.CurrentCulture.TextInfo.ToTitleCase(flow.Replace('_', ' '))
+	};
+
+	private static string FormatFlowShort(string? flow) => flow switch
+	{
+		"failed_subscription" => "Subscription",
+		"b2b_receivables" => "B2B Receivables",
+		"checkout_abandonment" => "Checkout",
+		"hinglish_voice" => "Voice",
+		"mandate_retry" => "Mandate",
+		"payment_degradation" => "Degradation",
+		"promise_to_pay" => "PTP",
+		"payment_event" => "Payment",
+		_ => flow ?? "—"
+	};
+
+	private static string GetFlowBarColor(string flow) => flow switch
+	{
+		"failed_subscription" => "coral",
+		"b2b_receivables" => "teal",
+		"checkout_abandonment" => "green",
+		"mandate_retry" => "amber",
+		"hinglish_voice" => "coral",
+		"promise_to_pay" => "teal",
+		_ => "green"
+	};
+
+	private static string TruncateId(string? id)
+	{
+		if (string.IsNullOrEmpty(id)) return "—";
+		if (id.Length <= 18) return id;
+		return id[..8] + "…" + id[^4..];
+	}
+
+	private static string FormatTimeAgo(string? ts)
+	{
+		if (string.IsNullOrWhiteSpace(ts)) return "—";
+		if (!DateTime.TryParse(ts, out var dt)) return ts;
+		var span = DateTime.UtcNow - dt.ToUniversalTime();
+		if (span.TotalSeconds < 60) return "just now";
+		if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
+		if (span.TotalHours < 24) return $"{(int)span.TotalHours}h ago";
+		if (span.TotalDays < 7) return $"{(int)span.TotalDays}d ago";
+		return dt.ToLocalTime().ToString("dd MMM HH:mm");
+	}
+
+	private static string IconClass(string? state) => state switch
+	{
+		"recovered" or "verified" => "icon-green",
+		"escalated" => "icon-red",
+		"suppressed" or "abandoned" => "icon-blue",
+		"waiting_on_ptp" or "retrying" or "contacting" or "contact_scheduled" or "retry_scheduled" => "icon-amber",
+		_ => "icon-blue"
+	};
+
+	private static string IconGlyph(string? state) => state switch
+	{
+		"recovered" or "verified" => "↗",
+		"escalated" => "↓",
+		"abandoned" => "✕",
+		"waiting_on_ptp" or "retrying" or "contacting" => "↻",
+		_ => "↗"
+	};
+
+	private static string FlowPillClass(string? flow) => flow switch
+	{
+		"payment_event" => "razorpay-pill",
+		"failed_subscription" => "stripe-pill",
+		"b2b_receivables" => "cashfree-pill",
+		"mandate_retry" => "payu-pill",
+		"checkout_abandonment" => "razorpay-pill",
+		_ => "stripe-pill"
+	};
+
+	private static string FlowInitial(string? flow) => flow switch
+	{
+		"payment_event" => "P",
+		"failed_subscription" => "S",
+		"b2b_receivables" => "B",
+		"checkout_abandonment" => "C",
+		"mandate_retry" => "M",
+		"hinglish_voice" => "V",
+		"promise_to_pay" => "P",
+		_ => "•"
+	};
+
+	private static string StatusClass(string? state) => state switch
+	{
+		"recovered" or "verified" => "success",
+		"waiting_on_ptp" or "contacting" or "retrying" or "contact_scheduled" or "retry_scheduled" => "pending",
+		"escalated" => "refund",
+		"abandoned" => "down",
+		_ => "neutral"
+	};
+
+	private static string FormatState(string? state) => state switch
+	{
+		"recovered" => "Recovered",
+		"waiting_on_ptp" => "Waiting PTP",
+		"contacting" => "Contacting",
+		"contact_scheduled" => "Contact Sched",
+		"retrying" => "Retrying",
+		"retry_scheduled" => "Retry Sched",
+		"escalated" => "Escalated",
+		"suppressed" => "Suppressed",
+		"abandoned" => "Abandoned",
+		"verified" => "Verified",
+		_ => string.IsNullOrEmpty(state) ? "Pending" : char.ToUpper(state[0]) + state[1..].Replace('_', ' ')
+	};
+
 	private async Task CreatePayment()
 	{
 		_paymentInProgress = true;

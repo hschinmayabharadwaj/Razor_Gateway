@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -72,10 +73,11 @@ func withCORS(next http.Handler) http.Handler {
 // shapes those results into JSON and applies the deny-by-default role gate.
 
 type streamServer struct {
-	audit  *AuditStore
-	hub    *StreamHub
-	mode   ExecutionMode
-	events []*FlowEvent
+	audit     *AuditStore
+	hub       *StreamHub
+	mode      ExecutionMode
+	events    []*FlowEvent
+	computeMu sync.Mutex
 }
 
 // StartStreamServer binds an HTTP server on addr (e.g. ":8090") and serves in a
@@ -230,6 +232,8 @@ func (s *streamServer) handleComparePolicy(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "events not loaded", "", "")
 		return
 	}
+	s.computeMu.Lock()
+	defer s.computeMu.Unlock()
 	realAudit, err := NewAuditStore("data/audit.real.jsonl")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error(), "", "")
@@ -294,6 +298,8 @@ func (s *streamServer) handleSandbox(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "events not loaded", "", "")
 		return
 	}
+	s.computeMu.Lock()
+	defer s.computeMu.Unlock()
 	selected := r.URL.Query().Get("scenario")
 	report, err := RunSandbox(s.events, BatchNow())
 	if err != nil {
@@ -412,13 +418,13 @@ func (s *streamServer) handlePaymentEvent(w http.ResponseWriter, r *http.Request
 // override. If the decision engine fires one of these rules, the admin action
 // is refused — the rule name is surfaced to the UI as proof the guard held.
 var lockedAdminRules = map[RuleId]bool{
-	"fraud_high_score":  true,
-	"fraud_chargeback":  true,
-	"mandate_revoked":   true,
-	"dnc_match":         true,
-	"quiet_hours":       true,
-	"touch_cap":         true,
-	"fraud_velocity":    true,
+	"fraud_high_score":           true,
+	"fraud_chargeback":           true,
+	"mandate_revoked":            true,
+	"dnc_match":                  true,
+	"quiet_hours":                true,
+	"touch_cap":                  true,
+	"fraud_velocity":             true,
 	"mandate_insufficient_funds": true,
 }
 
