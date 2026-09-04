@@ -1,5 +1,33 @@
 # Revenue Recovery Agent (multi-flow) — Go port
 
+## Razorpay test checkout
+
+The Blazor dashboard in `gateway-ui/` includes a Razorpay test-mode checkout.
+The server creates orders and verifies payments; the browser receives only the
+public key ID. Configure test credentials as environment variables before
+starting the UI. Never commit these values or put the secret key in browser
+code:
+
+```powershell
+$env:RAZORPAY_KEY_ID="rzp_test_..."
+$env:RAZORPAY_KEY_SECRET="..."
+$env:RAZORPAY_WEBHOOK_SECRET="..."
+dotnet run --project .\gateway-ui\GatewayUI.csproj
+```
+
+The C# host exposes:
+
+- `POST /api/payments/razorpay/order` — creates an INR order; amount is in paise.
+- `POST /api/payments/razorpay/verify` — verifies the Checkout.js payment signature.
+- `POST /webhooks/razorpay` — validates the `X-Razorpay-Signature` HMAC and records
+  accepted events in `data/payment-webhooks.jsonl`.
+
+In the Razorpay test dashboard, set the webhook URL to the public HTTPS URL
+for `/webhooks/razorpay` and use the same value as `RAZORPAY_WEBHOOK_SECRET`.
+For local testing, expose the UI with an HTTPS tunnel such as ngrok or
+Cloudflare Tunnel. The current audit stream remains a separate Go service on
+`http://localhost:8090`.
+
 An AI agent that **detects revenue at risk, determines the right intervention,
 and executes a bounded recovery workflow** across 7 recovery flows —
 from payment failures and checkout abandonment to overdue receivables.
@@ -349,6 +377,37 @@ The demo CLI runs the real batch plus walkthroughs proving correct behavior:
 
 `compare-policy`, `prescore`, and `sandbox` each run their own stage of the full
 story as standalone CLIs (the original TS `e2e` bundled all of them together).
+
+## Razorpay test checkout (Blazor UI)
+
+The `gateway-ui` project includes a Razorpay test-mode checkout flow:
+
+- `POST /api/payments/razorpay/order` creates an order server-side.
+- Razorpay Checkout.js opens in the browser using only the public key ID.
+- `POST /api/payments/razorpay/verify` verifies `order_id|payment_id` with HMAC-SHA256.
+- `POST /webhooks/razorpay` verifies the raw body with the Razorpay webhook secret,
+  rejects invalid signatures, and ignores duplicate payment events.
+- Accepted payment events are written to `data/payment-webhooks.jsonl` as a
+  separate hash-chained integration audit stream.
+
+Set test credentials in the shell that starts the C# app. Never commit these
+values or put the API secret in Razorpay Checkout JavaScript:
+
+```powershell
+$env:RAZORPAY_KEY_ID="rzp_test_..."
+$env:RAZORPAY_KEY_SECRET="..."
+$env:RAZORPAY_WEBHOOK_SECRET="..."
+dotnet run --project .\gateway-ui\GatewayUI.csproj
+```
+
+In the Razorpay Dashboard, create a test webhook pointing to:
+`https://your-public-host/webhooks/razorpay`. For local development, expose
+the app with an HTTPS tunnel and use that tunnel URL. Select payment events
+such as `payment.captured`, `payment.failed`, and `order.paid`.
+
+The dashboard's **Create payment** action uses a fixed INR test amount of
+`12,400.00` until a merchant checkout form is added. Razorpay test mode does
+not move real money.
 
 ## Security posture (honest, tested — not claimed)
 

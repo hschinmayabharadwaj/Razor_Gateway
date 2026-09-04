@@ -1,0 +1,47 @@
+@typeparam T
+
+@if (Loading)
+{
+    <div class="text-secondary py-4">
+        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Loading…
+    </div>
+}
+else if (Result is { AuthDenied: true } or { Failed: true })
+{
+    @if (Result.AuthDenied)
+    {
+        <div class="alert alert-warning border-start border-4 border-warning" role="alert">
+            <div class="fw-semibold">&#128274; Insufficient permissions</div>
+            <div class="small">The Go backend denied this request for the current credential.</div>
+            @if (Result.Denied is not null && (!string.IsNullOrEmpty(Result.Denied.Actor) || !string.IsNullOrEmpty(Result.Denied.Action)))
+            {
+                <div class="small text-secondary mt-1">
+                    @if (!string.IsNullOrEmpty(Result.Denied.Actor)) { <span>resolved principal: <code>@Result.Denied.Actor</code></span> }
+                    @if (!string.IsNullOrEmpty(Result.Denied.Action)) { <span>&nbsp;&middot;&nbsp;required action: <code>@Result.Denied.Action</code></span> }
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-danger border-start border-4 border-danger" role="alert">
+            <div class="fw-semibold">Could not reach the backend</div>
+            <div class="small">@Result.Error — is the Go server running on @BaseUrl?</div>
+        </div>
+    }
+}
+else if (Result is { Ok: true })
+{
+    @ChildContent
+}
+else
+{
+    <div class="text-secondary py-4">No data available.</div>
+}
+
+@code {
+    [Parameter] public ApiResult<T>? Result { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string BaseUrl { get; set; } = "http://localhost:8090";
+}

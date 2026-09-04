@@ -1,0 +1,133 @@
+@page "/sandbox"
+@using GatewayUI.Models
+@using GatewayUI.Services
+@inject IGatewayApi Api
+@implements IDisposable
+
+<PageTitle>Backtest Sandbox</PageTitle>
+
+<div class="py-3">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h3 class="mb-0">Backtest sandbox (tunable sweep)</h3>
+        <div class="d-flex gap-2 align-items-center">
+            <span class="small text-secondary">role: <code>@Api.CurrentRole</code></span>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="LoadAsync">Refresh</button>
+        </div>
+    </div>
+
+    <ViewState T="SandboxDto" Result="_result" Loading="@_loading"
+               BaseUrl="@Api.BaseUrl">
+        @if (_result!.Data is { } s)
+        {
+            @if (s.LockedInvariant)
+            {
+                <div class="alert alert-success">
+                    <strong>&#10003; Locked compliance rules never budged.</strong> Fraud / mandate-revoked / DNC / quiet-hours violations are 0 in every scenario.
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-danger">
+                    &#10007; A locked rule was violated — this must never happen.
+                </div>
+            }
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-5">
+                    <div class="card h-100 border-secondary bg-light">
+                        <div class="card-body text-secondary" style="opacity:.95; background:
+                          repeating-linear-gradient(45deg,#f1f1f1,#f1f1f1 8px,#e9e9e9 8px,#e9e9e9 16px);">
+                            <h6 class="card-title text-secondary">
+                                <span aria-hidden="true">&#128274;</span> LOCKED rules — cannot be overridden
+                            </h6>
+                            <p class="small mb-2">These safety/compliance invariants are structural. No config can dial them; every scenario above inherits them unchanged.</p>
+                            <div class="d-flex flex-wrap gap-2" data-locked-panel>
+                                @foreach (var rule in s.LockedRules ?? new List<string>())
+                                {
+                                    <span class="badge rounded-pill text-bg-secondary border-0" style="filter:grayscale(.2);"
+                                          title="immutable locked rule">
+                                        &#128274; @rule
+                                    </span>
+                                }
+                            </div>
+                            <div class="small text-secondary mt-2">locked violations across all scenarios: <strong>0 / 0 / 0 / 0</strong> (must stay 0)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-7">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-header fw-semibold">Tunable constants (&mdash; these scales, the locked ones above never move)</div>
+                        <div class="card-body small text-secondary">
+                            retry caps &middot; touch caps &middot; incentive thresholds &middot; voice-call caps &middot; mandate windows
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-header fw-semibold">Scenario comparison</div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Scenario</th>
+                                <th class="text-end">Recovery rate</th>
+                                <th class="text-end">Touches</th>
+                                <th class="text-end">Cost / recovery</th>
+                                <th class="text-center">Locked violations</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var sc in s.Scenarios ?? new List<SandboxScenarioDto>())
+                            {
+                                var isSel = string.Equals(sc.Label, s.SelectedScenario, StringComparison.OrdinalIgnoreCase);
+                                <tr class="@(isSel ? "table-primary" : "")">
+                                    <td><span class="fw-semibold">@sc.Label</span>@(isSel ? " (selected)" : "")</td>
+                                    <td class="text-end">@Pct(sc.RecoveryRate)</td>
+                                    <td class="text-end">@sc.TouchesSent</td>
+                                    <td class="text-end">@sc.CostPerRecovery.ToString("0.00")</td>
+                                    <td class="text-center">
+                                        <span class="badge @(sc.LockedViolations?.Total == 0 ? "bg-success" : "bg-danger")">
+                                            @(sc.LockedViolations?.Total ?? 0)
+                                        </span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card-footer small text-secondary">
+                    <strong>Backend headline:</strong> @s.Headline
+                </div>
+            </div>
+        }
+    </ViewState>
+</div>
+
+@code {
+    private ApiResult<SandboxDto>? _result;
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Api.RoleChanged += OnRoleChanged;
+        await LoadAsync();
+    }
+
+    private async void OnRoleChanged() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _result = null;
+        StateHasChanged();
+        _result = await Api.GetSandboxAsync();
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private static string Pct(double v) => (v * 100).ToString("0.0") + "%";
+
+    public void Dispose() => Api.RoleChanged -= OnRoleChanged;
+}

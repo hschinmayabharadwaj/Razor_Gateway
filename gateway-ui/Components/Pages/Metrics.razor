@@ -1,0 +1,152 @@
+@page "/metrics"
+@using GatewayUI.Models
+@using GatewayUI.Services
+@inject IGatewayApi Api
+@implements IDisposable
+
+<PageTitle>Metrics</PageTitle>
+
+<div class="py-3">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h3 class="mb-0">Recovery Metrics</h3>
+        <div class="d-flex gap-2 align-items-center">
+            <span class="small text-secondary">role: <code>@Api.CurrentRole</code></span>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="LoadAsync">Refresh</button>
+        </div>
+    </div>
+
+    <ViewState T="MetricsDto" Result="_result" Loading="@_loading">
+        @if (_result!.Data is { } m)
+        {
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                            <div class="text-muted small">Blended recovery rate</div>
+                            <div class="fs-4 fw-semibold">@Pct(m.RecoveryRate)</div>
+                            <div class="small text-secondary">@m.RecoveredCount, of @m.TotalEvents events</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                            <div class="text-muted small">Recovered amount</div>
+                            <div class="fs-4 fw-semibold">@Inr(m.RecoveredRupees)</div>
+                            <div class="small text-secondary">at-risk @m.TotalAtRiskRupees.ToString("N2") ₹</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                            <div class="text-muted small">Cost per recovery</div>
+                            <div class="fs-4 fw-semibold">@m.CostPerRecovery.ToString("0.00")</div>
+                            <div class="small text-secondary">@m.TouchesSent touches sent</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                            <div class="text-muted small">Escalated / Suppressed / Abandoned</div>
+                            <div class="fs-4 fw-semibold">@m.EscalatedCount / @m.SuppressedCount / @m.AbandonedCount</div>
+                            <div class="small text-secondary">non-auto-recovered</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @if (m.Eligibility is { } e)
+            {
+                <div class="card mb-3 shadow-sm">
+                    <div class="card-header fw-semibold">Eligible vs structurally blocked by compliance</div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="border-start border-4 border-danger ps-3">
+                                    <div class="text-muted small">Structurally blocked (0% recoverable by design)</div>
+                                    <div class="fs-5 fw-semibold text-danger">@e.BlockedByCompliance events</div>
+                                    <div class="small text-secondary">fraud / mandate-revoked / DNC / quiet-hours / PTP / no-action</div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="border-start border-4 border-success ps-3">
+                                    <div class="text-muted small">Recovery-eligible events</div>
+                                    <div class="fs-5 fw-semibold text-success">@e.EligibleEvents events</div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="border-start border-4 border-primary ps-3">
+                                    <div class="text-muted small">Eligible-only recovery rate</div>
+                                    <div class="fs-5 fw-semibold text-primary">@Pct(e.EligibleRecoveryRate)</div>
+                                    <div class="small text-secondary">@e.EligibleRecovered of @e.EligibleEvents recovered &middot; blended @Pct(e.BlendedRecoveryRate)</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="card shadow-sm">
+                <div class="card-header fw-semibold">Per-flow breakdown</div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Flow</th><th>Events</th><th>Recovered</th><th>Recovered ₹</th>
+                                <th>Escalated</th><th>Suppressed</th><th>Abandoned</th><th>Touches</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var f in OrderedFlows(m.ByFlow))
+                            {
+                                <tr>
+                                    <td>@f.Key</td>
+                                    <td>@f.Value.Events</td>
+                                    <td>@f.Value.RecoveredCount</td>
+                                    <td>@Inr(f.Value.RecoveredRupees)</td>
+                                    <td>@f.Value.Escalated</td>
+                                    <td>@f.Value.Suppressed</td>
+                                    <td>@f.Value.Abandoned</td>
+                                    <td>@f.Value.Touches</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </ViewState>
+</div>
+
+@code {
+    private ApiResult<MetricsDto>? _result;
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Api.RoleChanged += OnRoleChanged;
+        await LoadAsync();
+    }
+
+    private async void OnRoleChanged() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _result = null;
+        StateHasChanged();
+        _result = await Api.GetMetricsAsync();
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private static IEnumerable<KeyValuePair<string, FlowMetricsDto>> OrderedFlows(Dictionary<string, FlowMetricsDto>? map)
+        => (map ?? new()).OrderBy(kv => kv.Key);
+
+    private static string Pct(double v) => (v * 100).ToString("0.0") + "%";
+    private static string Inr(double v) => "₹" + v.ToString("N2");
+
+    public void Dispose() => Api.RoleChanged -= OnRoleChanged;
+}

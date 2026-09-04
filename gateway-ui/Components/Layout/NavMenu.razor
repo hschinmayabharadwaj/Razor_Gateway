@@ -1,0 +1,77 @@
+﻿@using GatewayUI.Services
+@inject IGatewayApi Api
+
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+            <a class="navbar-brand" href=""><span class="brand-mark">R</span><span>razor<span class="brand-accent">ops</span></span></a>
+        <div class="d-flex align-items-center gap-2 text-white-50 small">
+            <span class="d-none d-sm-inline">active role</span>
+            <select class="form-select form-select-sm" style="width:auto" value="@_role" @onchange="OnRoleChange">
+                @foreach (var role in Roles)
+                {
+                    <option value="@role">@role</option>
+                }
+            </select>
+            <code class="text-white-50">@Api.CurrentKey</code>
+        </div>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="nav flex-column">
+        <div class="nav-caption">Workspace</div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All"><span class="bi bi-grid" aria-hidden="true"></span> Overview</NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="liveaudit" Match="NavLinkMatch.All">
+                <span class="bi bi-activity" aria-hidden="true"></span> Live Audit
+            </NavLink>
+        </div>
+        <div class="nav-caption nav-caption-spaced">Intelligence</div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="metrics">
+                <span class="bi bi-bar-chart" aria-hidden="true"></span> Metrics
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="compare-policy">
+                <span class="bi bi-git-compare" aria-hidden="true"></span> Compare Policy
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="prescore">
+                <span class="bi bi-graph-up" aria-hidden="true"></span> Prescore
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="sandbox">
+                <span class="bi bi-sliders" aria-hidden="true"></span> Sandbox
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="exceptions">
+                <span class="bi bi-exclamation-triangle" aria-hidden="true"></span> Exceptions
+            </NavLink>
+        </div>
+        <div class="sidebar-footer"><span class="footer-icon">&#10003;</span><div><strong>All systems operational</strong><small>Updated just now</small></div></div>
+    </nav>
+</div>
+
+@code {
+    private static readonly string[] Roles = GatewayApiService.Roles;
+    private string _role = "admin";
+
+    protected override void OnInitialized() => _role = Api.CurrentRole;
+
+    private Task OnRoleChange(ChangeEventArgs e)
+    {
+        var role = e.Value?.ToString() ?? "admin";
+        _role = role;
+        Api.SetRole(role);
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+}
