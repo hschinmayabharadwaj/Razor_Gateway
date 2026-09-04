@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -163,12 +164,19 @@ public sealed class PaymentAuditService
 {
     private readonly string _path;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly IHttpClientFactory _clientFactory;
+    private readonly ILogger<PaymentAuditService> _logger;
     private string _previousHash = "0000000000000000000000000000000000000000000000000000000000000000";
 
-    public PaymentAuditService(IHostEnvironment environment, IConfiguration configuration)
+    // Go stream-server base URL for forwarding payment events into the live audit stream.
+    private const string GoStreamBaseUrl = "http://localhost:8090";
+
+    public PaymentAuditService(IHostEnvironment environment, IConfiguration configuration, IHttpClientFactory clientFactory, ILogger<PaymentAuditService> logger)
     {
         var configured = configuration["PaymentAuditPath"] ?? "../data/payment-webhooks.jsonl";
         _path = Path.GetFullPath(Path.Combine(environment.ContentRootPath, configured));
+        _clientFactory = clientFactory;
+        _logger = logger;
     }
 
     public async Task AppendAsync(string eventId, string eventType, string state, object details, CancellationToken cancellationToken)
@@ -187,6 +195,42 @@ public sealed class PaymentAuditService
         finally
         {
             _gate.Release();
+        }
+
+        // Best-effort forward to Go stream server so the event appears on the
+        // live SSE audit stream. Failures are logged but never propagated — the
+        // local hash chain is the source of truth for payment audit.
+        _ = ForwardToGoAsync(eventId, eventType, state, details);
+    }
+
+    private async Task ForwardToGoAsync(string eventId, string eventType, string state, object details)
+    {
+        try
+        {
+            using var client = _clientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(5);
+            var payload = new
+            {
+                eventId,
+                eventType,
+                state,
+                details = JsonSerializer.Serialize(details)
+            };
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{GoStreamBaseUrl}/payment-event")
+            {
+                Content = JsonContent.Create(payload)
+            };
+            // Use the admin key so the Go auth gate accepts the write.
+            request.Headers.Add("X-API-Key", "admin_key_demo");
+            using var response = await client.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Forward to Go /payment-event returned {Status}", (int)response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to forward payment event {EventId} to Go stream server", eventId);
         }
     }
 

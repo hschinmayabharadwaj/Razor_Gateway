@@ -39,6 +39,7 @@
                 <tr>
                     <th>Event</th>
                     <th>Flow</th>
+                    <th>Amount</th>
                     <th>Reason</th>
                     <th>Rule Fired</th>
                     <th>Decision</th>
@@ -50,23 +51,121 @@
             <tbody>
                 @foreach (var e in Entries)
                 {
-                    <tr class="audit-row">
+                    <tr class="audit-row @(e.Flow == "payment_event" ? "audit-row-payment" : "") @(SelectedEventId == e.EventId ? "audit-row-selected" : "")"
+                        @onclick="() => SelectEvent(e)" style="cursor:pointer">
                         <td><code>@e.EventId</code></td>
-                        <td>@e.Flow</td>
+                        <td>
+                            @if (e.Flow == "payment_event")
+                            {
+                                <span class="badge bg-info text-dark">payment</span>
+                            }
+                            else
+                            {
+                                @e.Flow
+                            }
+                        </td>
+                        <td class="text-end">
+                            @if (e.Amount is > 0)
+                            {
+                                <span class="text-nowrap">@(e.Amount.Value / 100.0).ToString("C", new System.Globalization.CultureInfo("en-IN"))</span>
+                            }
+                        </td>
                         <td>@e.ReasonBucket</td>
                         <td><span class="badge bg-secondary">@e.RuleFired</span></td>
                         <td>@e.Decision</td>
-                        <td>@e.Actor</td>
-                        <td>@e.State</td>
-                        <td class="text-muted small">@e.Outcome</td>
+                        <td>
+                            @if (e.Actor == "human")
+                            {
+                                <span class="badge bg-dark">admin</span>
+                            }
+                            else
+                            {
+                                @e.Actor
+                            }
+                        </td>
+                        <td>@StateChip(e.State)</td>
+                        <td class="text-muted small">
+                            @e.Outcome
+                            @if (e.TriggeredBy is { Length: > 0 })
+                            {
+                                <br /><small class="text-info">@e.TriggeredBy</small>
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>
         </table>
     </div>
+
+    @if (SelectedEventId is not null && Api.CurrentRole == "admin")
+    {
+        <div class="card mt-3 border-primary">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <strong>Admin Intervention</strong>
+                <button class="btn btn-sm btn-outline-light" @onclick="ClearSelection">✕</button>
+            </div>
+            <div class="card-body">
+                <p class="mb-2">
+                    Event: <code>@SelectedEventId</code>
+                    @if (SelectedEntry is not null)
+                    {
+                        <span> — state: @SelectedEntry.State, flow: @SelectedEntry.Flow</span>
+                    }
+                </p>
+
+                @if (ActionResult is not null)
+                {
+                    <div class="alert @(ActionResult.Ok ? "alert-success" : "alert-warning") mb-3">
+                        @if (ActionResult.Ok)
+                        {
+                            <strong>Action executed.</strong> @ActionResult.Outcome
+                        }
+                        else
+                        {
+                            <strong>Refused.</strong> @ActionResult.RefusedReason
+                            <br /><small>Blocked by rule: <code>@ActionResult.RefusedBy</code></small>
+                        }
+                    </div>
+                }
+
+                <div class="d-flex gap-2 flex-wrap">
+                    <button class="btn btn-outline-primary btn-sm" @onclick="() => ExecuteAdminAction(NudgeRetry)" disabled="@ActionInProgress">
+                        @(ActionInProgress ? "Running…" : "Nudge Retry Now")
+                    </button>
+
+                    <div class="input-group input-group-sm" style="width:auto">
+                        <select class="form-select form-select-sm" @bind="SelectedChannel">
+                            <option value="">Channel…</option>
+                            <option value="email">Email</option>
+                            <option value="whatsapp">WhatsApp</option>
+                            <option value="sms">SMS</option>
+                            <option value="voice">Voice</option>
+                            <option value="api">API</option>
+                        </select>
+                        <button class="btn btn-outline-primary" @onclick="() => ExecuteAdminAction(SelectChannel)" disabled="@(ActionInProgress || string.IsNullOrEmpty(SelectedChannel))">
+                            Set Channel
+                        </button>
+                    </div>
+
+                    <button class="btn btn-outline-success btn-sm" @onclick="() => ExecuteAdminAction(MarkPtp)" disabled="@(ActionInProgress || SelectedEntry?.State != "waiting_on_ptp")">
+                        Mark PTP Fulfilled
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
+<style>
+    .audit-row-payment { border-left: 3px solid #0dcaf0; background-color: rgba(13, 202, 240, 0.06); }
+    .audit-row-selected { background-color: rgba(13, 110, 253, 0.10) !important; outline: 2px solid #0d6efd; }
+</style>
+
 @code {
+    private const string NudgeRetry = "nudge_retry";
+    private const string SelectChannel = "select_recovery_channel";
+    private const string MarkPtp = "mark_ptp_fulfilled";
+
     private readonly List<AuditEntryDto> Entries = new();
     private long _subId = -1;
 
@@ -79,6 +178,12 @@
 
     private string StatusText = "connecting";
     private string StatusBadgeClass = "bg-secondary";
+
+    private string? SelectedEventId;
+    private AuditEntryDto? SelectedEntry;
+    private string SelectedChannel = "";
+    private bool ActionInProgress;
+    private AdminActionResult? ActionResult;
 
     protected override void OnInitialized()
     {
@@ -134,6 +239,10 @@
             {
                 case AuditStreamEvent a:
                     Entries.Add(a.Entry);
+                    if (a.Entry.EventId == SelectedEventId)
+                    {
+                        SelectedEntry = a.Entry;
+                    }
                     break;
                 case ChainStatusStreamEvent c:
                     IsChainValid = c.Status.Valid;
@@ -143,6 +252,37 @@
             }
             StateHasChanged();
         });
+    }
+
+    private void SelectEvent(AuditEntryDto entry)
+    {
+        SelectedEventId = entry.EventId;
+        SelectedEntry = entry;
+        ActionResult = null;
+        StateHasChanged();
+    }
+
+    private void ClearSelection()
+    {
+        SelectedEventId = null;
+        SelectedEntry = null;
+        ActionResult = null;
+        StateHasChanged();
+    }
+
+    private async Task ExecuteAdminAction(string action)
+    {
+        if (SelectedEventId is null) return;
+        ActionInProgress = true;
+        ActionResult = null;
+        StateHasChanged();
+
+        var request = new AdminActionRequest(SelectedEventId, action, action == "select_recovery_channel" ? SelectedChannel : null);
+        var result = await Api.PostAdminActionAsync(request);
+
+        ActionInProgress = false;
+        ActionResult = result.Ok ? result.Data : null;
+        StateHasChanged();
     }
 
     private async Task SimulateTamper()
@@ -162,6 +302,19 @@
         };
         StateHasChanged();
     }
+
+    private static MarkupString StateChip(string? state) => state switch
+    {
+        "recovered" => new("<span class=\"badge bg-success\">recovered</span>"),
+        "escalated" => new("<span class=\"badge bg-warning text-dark\">escalated</span>"),
+        "suppressed" => new("<span class=\"badge bg-secondary\">suppressed</span>"),
+        "abandoned" => new("<span class=\"badge bg-danger\">abandoned</span>"),
+        "waiting_on_ptp" => new("<span class=\"badge bg-info text-dark\">waiting on PTP</span>"),
+        "retry_scheduled" or "retrying" => new("<span class=\"badge bg-primary\">retry</span>"),
+        "contact_scheduled" or "contacting" => new("<span class=\"badge bg-primary\">contact</span>"),
+        "detected" or "diagnosed" => new("<span class=\"badge bg-light text-dark\">detected</span>"),
+        _ => new($"<span class=\"badge bg-light text-dark\">{state ?? "?"}</span>"),
+    };
 
     public async ValueTask DisposeAsync()
     {

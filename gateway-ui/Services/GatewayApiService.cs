@@ -43,6 +43,7 @@ public interface IGatewayApi
     Task<ApiResult<SandboxDto>> GetSandboxAsync(string? scenario = null);
     Task<ApiResult<ChainStatusDto>> GetChainStatusAsync();
     Task<ApiResult<string>> PostTamperAsync();
+    Task<ApiResult<AdminActionResult>> PostAdminActionAsync(AdminActionRequest request);
     HttpRequestMessage NewRequest(HttpMethod method, string path);
 }
 
@@ -178,5 +179,40 @@ public class GatewayApiService : IGatewayApi
     {
         var q = string.IsNullOrWhiteSpace(scenario) ? "" : "?scenario=" + Uri.EscapeDataString(scenario);
         return GetAsync<SandboxDto>("/sandbox" + q);
+    }
+
+    public async Task<ApiResult<AdminActionResult>> PostAdminActionAsync(AdminActionRequest request)
+    {
+        using var client = _factory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(10);
+        using var req = NewRequest(HttpMethod.Post, "/admin/action");
+        req.Content = JsonContent.Create(request);
+        try
+        {
+            using var resp = await client.SendAsync(req);
+            if (resp.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                var err = await ReadBackendErrorAsync(resp);
+                return ApiResult<AdminActionResult>.Unauthorized(err);
+            }
+            if (!resp.IsSuccessStatusCode)
+            {
+                return ApiResult<AdminActionResult>.Failure($"HTTP {(int)resp.StatusCode}");
+            }
+            var data = await resp.Content.ReadFromJsonAsync<AdminActionResult>();
+            if (data == null)
+            {
+                return ApiResult<AdminActionResult>.Failure("empty response");
+            }
+            return ApiResult<AdminActionResult>.Success(data);
+        }
+        catch (TaskCanceledException)
+        {
+            return ApiResult<AdminActionResult>.Failure("request timed out");
+        }
+        catch (Exception ex)
+        {
+            return ApiResult<AdminActionResult>.Failure(ex.Message);
+        }
     }
 }

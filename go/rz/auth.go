@@ -17,6 +17,7 @@ const (
 	ActionReadAuditLog      Action = "read_audit_log"
 	ActionReadExceptionList Action = "read_exception_list"
 	ActionVerifyAnchor      Action = "verify_anchor"
+	ActionAdminIntervention Action = "admin_intervention"
 )
 
 type AccessDecision struct {
@@ -40,7 +41,7 @@ var credentialStore = map[string]credentialEntry{
 
 var rolePermissions = map[string][]Action{
 	"operator": {ActionRunBatch, ActionReadAuditLog, ActionReadExceptionList, ActionVerifyAnchor},
-	"admin":    {ActionRunBatch, ActionTuneSandbox, ActionReadAuditLog, ActionReadExceptionList, ActionVerifyAnchor},
+	"admin":    {ActionRunBatch, ActionTuneSandbox, ActionReadAuditLog, ActionReadExceptionList, ActionVerifyAnchor, ActionAdminIntervention},
 	"auditor":  {ActionReadAuditLog, ActionReadExceptionList, ActionVerifyAnchor},
 }
 
