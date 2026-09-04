@@ -49,6 +49,9 @@ func StablePayload(e *AuditEntry) string {
 	if e.Notes != "" {
 		m["notes"] = e.Notes
 	}
+	if e.TriggeredBy != "" {
+		m["triggeredBy"] = e.TriggeredBy
+	}
 	b, err := json.Marshal(m)
 	if err != nil {
 		return "{}"

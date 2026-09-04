@@ -15,6 +15,7 @@ const (
 	FlowMandateRetry        FlowType = "mandate_retry"
 	FlowHinglishVoice       FlowType = "hinglish_voice"
 	FlowPromiseToPay        FlowType = "promise_to_pay"
+	FlowPaymentEvent        FlowType = "payment_event"
 )
 
 // FlowTypes is the ordered list of all flows (mirrors FLOW_TYPES).
@@ -93,7 +94,8 @@ const (
 	ActorPolicyEngine Actor = "policy_engine"
 	ActorLLMCopy      Actor = "llm_copy"
 	ActorHuman        Actor = "human"
-	ActorDialer       Actor = "dialer"
+	ActorDialer          Actor = "dialer"
+	ActorPaymentGateway  Actor = "payment_gateway"
 )
 
 // RuleId is a named, individually testable decision rule.
@@ -173,6 +175,7 @@ type AuditEntry struct {
 	CustomerID   string       `json:"customerId,omitempty"`
 	Channel      string       `json:"channel,omitempty"`
 	Notes        string       `json:"notes,omitempty"`
+	TriggeredBy  string       `json:"triggeredBy,omitempty"`
 	// Tamper-evidence hash chain (appended additively).
 	PrevHash string `json:"prevHash,omitempty"`
 	Hash     string `json:"hash,omitempty"`
