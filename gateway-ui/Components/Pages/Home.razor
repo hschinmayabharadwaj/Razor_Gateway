@@ -1,0 +1,61 @@
+﻿@page "/"
+@using GatewayUI.Services
+@inject IGatewayApi Api
+
+<PageTitle>Overview | razorops</PageTitle>
+
+<div class="dashboard-shell page-reveal">
+	<div class="dashboard-heading">
+		<div><div class="eyebrow">Payments command center <span class="eyebrow-line"></span> 04 Sep 2026</div><h1>Good morning, Ananya<span class="heading-dot">.</span></h1><p class="heading-copy">One clear view of every payment, every route, every recovery.</p></div>
+		<div class="heading-actions"><button class="btn btn-quiet" @onclick="ToggleLive"><span class="live-dot"></span> @(_liveMode ? "Live mode" : "Paused")</button><button class="btn btn-coral" @onclick="CreatePayment" disabled="@_paymentInProgress"><span>+</span> @(_paymentInProgress ? "Opening checkout..." : "Create payment")</button><span class="payment-feedback">@_paymentMessage</span></div>
+	</div>
+
+	<div class="stat-grid stagger-in">
+		<div class="stat-card stat-card-featured"><div class="stat-card-top"><span>Gross processed</span><span class="trend up">&#8593; 12.8%</span></div><strong class="stat-value">&#8377; 24.86L</strong><div class="stat-foot"><span>vs &#8377; 22.04L last period</span><span class="sparkline coral-spark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div></div>
+		<div class="stat-card"><div class="stat-card-top"><span>Success rate</span><span class="trend up">&#8593; 0.6%</span></div><strong class="stat-value">98.42<span class="value-unit">%</span></strong><div class="stat-foot"><span>Across 18,492 attempts</span><span class="sparkline green-spark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div></div>
+		<div class="stat-card"><div class="stat-card-top"><span>Pending settlements</span><span class="trend neutral">Today</span></div><strong class="stat-value">&#8377; 8.42L</strong><div class="stat-foot"><span>Across 4 providers</span><span class="settlement-bars"><i></i><i></i><i></i><i></i></span></div></div>
+		<div class="stat-card"><div class="stat-card-top"><span>Refunds this month</span><span class="trend down">&#8595; 3.1%</span></div><strong class="stat-value">&#8377; 42.8K</strong><div class="stat-foot"><span>86 requests processed</span><span class="refund-icon">&#8617;</span></div></div>
+	</div>
+
+	<div class="content-grid stagger-in">
+		<section class="panel volume-panel"><div class="panel-header"><div><span class="panel-kicker">Performance</span><h2>Transaction volume</h2></div><div class="period-tabs"><button class="active">7D</button><button>30D</button><button>90D</button></div></div><div class="chart-summary"><strong>&#8377; 24,86,240</strong><span class="trend up">&#8593; 12.8%</span><span class="summary-muted">processed volume</span></div><div class="volume-chart" aria-label="Transaction volume chart"><div class="chart-y-axis"><span>4L</span><span>3L</span><span>2L</span><span>1L</span><span>0</span></div><div class="chart-area"><div class="chart-gridlines"><i></i><i></i><i></i><i></i><i></i></div><div class="chart-fill"></div><div class="chart-line"></div><div class="chart-points"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="chart-x-axis"><span>29 Aug</span><span>30</span><span>31</span><span>01 Sep</span><span>02</span><span>03</span><span>04</span></div></div></div></section>
+
+		<section class="panel route-panel"><div class="panel-header"><div><span class="panel-kicker">Routing health</span><h2>Provider mix</h2></div><button class="more-button" title="More provider options" aria-label="More provider options">&#8943;</button></div><div class="donut-row"><div class="donut"><div><strong>18,492</strong><span>payments</span></div></div><div class="provider-legend"><div><span class="legend-dot razorpay-dot"></span><span>Razorpay</span><strong>46%</strong></div><div><span class="legend-dot stripe-dot"></span><span>Stripe</span><strong>28%</strong></div><div><span class="legend-dot cashfree-dot"></span><span>Cashfree</span><strong>16%</strong></div><div><span class="legend-dot payu-dot"></span><span>PayU</span><strong>10%</strong></div></div></div><div class="route-alert"><span>&#10003;</span><div><strong>Smart routing is healthy</strong><small>All fallback paths are active</small></div><span class="arrow">&#8594;</span></div></section>
+	</div>
+
+	<section class="panel activity-panel stagger-in"><div class="panel-header"><div><span class="panel-kicker">Live feed</span><h2>Recent transactions</h2></div><a class="panel-link" href="liveaudit">View live audit <span>&#8594;</span></a></div><div class="table-responsive"><table class="activity-table"><thead><tr><th>Payment</th><th>Customer</th><th>Provider</th><th>Amount</th><th>Status</th><th>Time</th></tr></thead><tbody>
+		<tr><td><span class="transaction-icon icon-green">&#8599;</span><strong>pay_8Xn2...K4mP</strong></td><td>Meera Shah</td><td><span class="provider-pill razorpay-pill">R</span> Razorpay</td><td><strong>&#8377; 12,400.00</strong></td><td><span class="status-pill success">Succeeded</span></td><td>2 min ago</td></tr>
+		<tr><td><span class="transaction-icon icon-blue">&#8599;</span><strong>pay_7Lm9...B2qA</strong></td><td>Arjun Menon</td><td><span class="provider-pill stripe-pill">S</span> Stripe</td><td><strong>&#8377; 8,750.00</strong></td><td><span class="status-pill success">Succeeded</span></td><td>8 min ago</td></tr>
+		<tr><td><span class="transaction-icon icon-amber">&#8635;</span><strong>pay_6Pc4...R8zN</strong></td><td>Northstar Labs</td><td><span class="provider-pill cashfree-pill">C</span> Cashfree</td><td><strong>&#8377; 34,200.00</strong></td><td><span class="status-pill pending">Processing</span></td><td>11 min ago</td></tr>
+		<tr><td><span class="transaction-icon icon-red">&#8595;</span><strong>rfnd_3Dz1...Q9vL</strong></td><td>Kavya Iyer</td><td><span class="provider-pill payu-pill">P</span> PayU</td><td><strong>&#8377; 2,100.00</strong></td><td><span class="status-pill refund">Refunded</span></td><td>22 min ago</td></tr>
+	</tbody></table></div></section>
+	<div class="dashboard-footer"><span><span class="footer-live"></span> Data refreshes automatically</span><span>API status <strong class="api-ok">Operational</strong> <span class="mini-check">&#10003;</span></span><span>Role <strong>@Api.CurrentRole</strong></span></div>
+</div>
+
+@code {
+	[Inject] private IJSRuntime JS { get; set; } = default!;
+	private bool _liveMode = true;
+	private bool _paymentInProgress;
+	private string _paymentMessage = "";
+	private void ToggleLive() => _liveMode = !_liveMode;
+	private async Task CreatePayment()
+	{
+		_paymentInProgress = true;
+		_paymentMessage = "";
+		try
+		{
+			var result = await JS.InvokeAsync<PaymentClientResult>("razorpayCheckout", 1240000, "INR");
+			_paymentMessage = result.Ok ? "Payment verified" : result.Message;
+		}
+		catch (JSException ex)
+		{
+			_paymentMessage = ex.Message;
+		}
+		finally
+		{
+			_paymentInProgress = false;
+		}
+	}
+
+	private sealed record PaymentClientResult(bool Ok, string Message);
+}

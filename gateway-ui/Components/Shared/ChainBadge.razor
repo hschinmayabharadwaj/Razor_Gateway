@@ -1,0 +1,14 @@
+@if (Valid)
+{
+    <span class="badge bg-success fs-6">&#10003; Chain Verified, @Entries entries</span>
+}
+else
+{
+    <span class="badge bg-danger fs-6">&#10007; Chain Broken at entry @(BrokenAt ?? 0)</span>
+}
+
+@code {
+    [Parameter] public bool Valid { get; set; } = true;
+    [Parameter] public int Entries { get; set; }
+    [Parameter] public int? BrokenAt { get; set; }
+}

@@ -59,6 +59,9 @@ func (s *AuditStore) Append(e AuditEntry) error {
 	}
 	defer f.Close()
 	_, err = f.Write(append(line, '\n'))
+	if err == nil && BroadcastHub != nil {
+		BroadcastHub.Broadcast(entry)
+	}
 	return err
 }
 

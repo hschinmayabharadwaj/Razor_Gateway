@@ -1,0 +1,101 @@
+@page "/compare-policy"
+@using GatewayUI.Models
+@using GatewayUI.Services
+@inject IGatewayApi Api
+@implements IDisposable
+
+<PageTitle>Policy Comparison</PageTitle>
+
+<div class="py-3">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h3 class="mb-0">Real policy vs naive baseline</h3>
+        <div class="d-flex gap-2 align-items-center">
+            <span class="small text-secondary">role: <code>@Api.CurrentRole</code></span>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="LoadAsync">Refresh</button>
+        </div>
+    </div>
+
+    <ViewState T="PolicyComparisonDto" Result="_result" Loading="@_loading">
+        @if (_result!.Data is { } c)
+        {
+            <div class="alert alert-info">
+                <strong>Takeaway (computed by the backend):</strong> @c.Takeaway
+            </div>
+
+            <div class="card mb-3 shadow-sm">
+                <div class="card-header fw-semibold">Side-by-side — same batch</div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered mb-0">
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th class="text-end">Real policy</th>
+                                <th class="text-end">Naive policy</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Recovery rate</td><td class="text-end">@Pct(c.Real!.RecoveryRate)</td><td class="text-end">@Pct(c.Naive!.RecoveryRate)</td></tr>
+                            <tr><td>Recovered amount</td><td class="text-end">@Inr(c.Real.RecoveredRupees)</td><td class="text-end">@Inr(c.Naive.RecoveredRupees)</td></tr>
+                            <tr><td>Touches sent</td><td class="text-end">@c.Real.TouchesSent</td><td class="text-end">@c.Naive.TouchesSent</td></tr>
+                            <tr><td>Cost per recovery</td><td class="text-end">@c.Real.CostPerRecovery.ToString("0.00")</td><td class="text-end">@c.Naive.CostPerRecovery.ToString("0.00")</td></tr>
+                            <tr class="table-warning">
+                                <td>Compliance violations</td>
+                                <td class="text-end text-success fw-semibold">0</td>
+                                <td class="text-end text-danger fw-semibold">@c.Violations!.Total</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-header fw-semibold">Violations the naive policy would have committed (re-checked vs real rules)</div>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr><th>Violation</th><th class="text-end">Count</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>fraud_flagged retries</td><td class="text-end">@c.Violations.FraudRetries</td></tr>
+                            <tr><td>mandate_revoked retries</td><td class="text-end">@c.Violations.MandateRetries</td></tr>
+                            <tr><td>TRAI quiet-hour calls</td><td class="text-end">@c.Violations.QuietHourCalls</td></tr>
+                            <tr><td>DNC breaches</td><td class="text-end">@c.Violations.DNcBreaches</td></tr>
+                            <tr><td>customer touch-cap breaches</td><td class="text-end">@c.Violations.TouchCapBreaches</td></tr>
+                            <tr><td>retry-budget (10 vs 3) overage</td><td class="text-end">@c.Violations.RetryBudgetBreaches</td></tr>
+                            <tr><td>PTP-suppression breaches</td><td class="text-end">@c.Violations.PtpSuppressionBreaches</td></tr>
+                            <tr class="table-warning fw-semibold"><td>TOTAL</td><td class="text-end">@c.Violations.Total</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </ViewState>
+</div>
+
+@code {
+    private ApiResult<PolicyComparisonDto>? _result;
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Api.RoleChanged += OnRoleChanged;
+        await LoadAsync();
+    }
+
+    private async void OnRoleChanged() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _result = null;
+        StateHasChanged();
+        _result = await Api.GetComparisonAsync();
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private static string Pct(double v) => (v * 100).ToString("0.0") + "%";
+    private static string Inr(double v) => "₹" + v.ToString("N2");
+
+    public void Dispose() => Api.RoleChanged -= OnRoleChanged;
+}

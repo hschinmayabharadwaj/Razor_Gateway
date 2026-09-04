@@ -1,0 +1,175 @@
+@page "/liveaudit"
+@using GatewayUI.Models
+@using GatewayUI.Services
+@using System.Threading.Tasks
+@inject AuditStreamService Stream
+@inject IGatewayApi Api
+@implements IAsyncDisposable
+
+<PageTitle>Live Audit</PageTitle>
+
+<div class="container mt-3">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+        <h3 class="mb-0">Live Audit Stream</h3>
+
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="small text-secondary">
+                role: <code>@Api.CurrentRole</code>
+            </span>
+
+            <ChainBadge Valid="@IsChainValid" Entries="@ChainEntries" BrokenAt="@BrokenAt" />
+
+            <button class="btn btn-warning btn-sm" @onclick="SimulateTamper" disabled="@Tampering">
+                @(Tampering ? "Tampering…" : "Simulate Tamper (Sandbox Only)")
+            </button>
+        </div>
+    </div>
+
+    <div class="text-muted small mb-2" id="live-status">
+        <span class="badge @StatusBadgeClass">@StatusText</span>
+        @if (TamperNotice is not null)
+        {
+            <span>@TamperNotice</span>
+        }
+    </div>
+
+    <div class="table-responsive" style="max-height: 70vh; overflow-y: auto;">
+        <table class="table table-sm table-striped table-hover align-middle">
+            <thead class="table-dark sticky-top">
+                <tr>
+                    <th>Event</th>
+                    <th>Flow</th>
+                    <th>Reason</th>
+                    <th>Rule Fired</th>
+                    <th>Decision</th>
+                    <th>Actor</th>
+                    <th>State</th>
+                    <th>Outcome</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in Entries)
+                {
+                    <tr class="audit-row">
+                        <td><code>@e.EventId</code></td>
+                        <td>@e.Flow</td>
+                        <td>@e.ReasonBucket</td>
+                        <td><span class="badge bg-secondary">@e.RuleFired</span></td>
+                        <td>@e.Decision</td>
+                        <td>@e.Actor</td>
+                        <td>@e.State</td>
+                        <td class="text-muted small">@e.Outcome</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private readonly List<AuditEntryDto> Entries = new();
+    private long _subId = -1;
+
+    private bool IsChainValid = true;
+    private int ChainEntries = 0;
+    private int? BrokenAt;
+
+    private bool Tampering;
+    private string? TamperNotice;
+
+    private string StatusText = "connecting";
+    private string StatusBadgeClass = "bg-secondary";
+
+    protected override void OnInitialized()
+    {
+        Stream.StatusChanged += OnStatus;
+        _subId = Stream.Subscribe(OnStreamEvent);
+        _ = LoadInitialChainAsync();
+    }
+
+    private async Task LoadInitialChainAsync()
+    {
+        var result = await Api.GetChainStatusAsync();
+        if (result.Ok && result.Data is not null)
+        {
+            IsChainValid = result.Data.Valid;
+            ChainEntries = result.Data.Entries;
+            BrokenAt = result.Data.BrokenAt;
+            StateHasChanged();
+        }
+    }
+
+    private void OnStatus(StreamStatus status)
+    {
+        InvokeAsync(() =>
+        {
+            switch (status.Phase)
+            {
+                case StreamPhase.Connected:
+                    StatusText = "connected — watching decisions live";
+                    StatusBadgeClass = "bg-success";
+                    break;
+                case StreamPhase.Connecting:
+                    StatusText = "connecting…";
+                    StatusBadgeClass = "bg-secondary";
+                    break;
+                case StreamPhase.Denied:
+                    StatusText = "insufficient permissions for audit stream";
+                    StatusBadgeClass = "bg-warning text-dark";
+                    break;
+                case StreamPhase.Reconnecting:
+                    StatusText = "reconnecting…";
+                    StatusBadgeClass = "bg-warning text-dark";
+                    break;
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void OnStreamEvent(StreamEvent ev)
+    {
+        InvokeAsync(() =>
+        {
+            switch (ev)
+            {
+                case AuditStreamEvent a:
+                    Entries.Add(a.Entry);
+                    break;
+                case ChainStatusStreamEvent c:
+                    IsChainValid = c.Status.Valid;
+                    ChainEntries = c.Status.Entries;
+                    BrokenAt = c.Status.BrokenAt;
+                    break;
+            }
+            StateHasChanged();
+        });
+    }
+
+    private async Task SimulateTamper()
+    {
+        Tampering = true;
+        TamperNotice = null;
+        StateHasChanged();
+
+        var result = await Api.PostTamperAsync();
+
+        Tampering = false;
+        TamperNotice = result switch
+        {
+            { AuthDenied: true } => "Tamper requires the admin role (denied).",
+            { Failed: true } => "Tamper request failed: " + result.Error,
+            _ => "Tamper simulated — waiting for the chain_status event over the stream…"
+        };
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Stream.StatusChanged -= OnStatus;
+        if (_subId >= 0)
+        {
+            Stream.Unsubscribe(_subId);
+        }
+        await Task.CompletedTask;
+    }
+}

@@ -11,6 +11,8 @@ import (
 
 func main() {
 	configFile := flag.String("config", "", "JSON tunables file (see tunables.example.json)")
+	streamFlag := flag.Bool("stream", false, "start the live SSE stream server alongside the batch")
+	streamPort := flag.String("stream-port", "8090", "SSE stream server port (used with --stream)")
 	flag.Parse()
 
 	events, err := rz.LoadEvents("data/flows")
@@ -41,6 +43,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	streamOn := false
+	if *streamFlag {
+		hub := rz.NewStreamHub()
+		rz.BroadcastHub = hub
+		streamSrv, err := rz.StartStreamServer(audit, hub, ":"+*streamPort)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "stream-server:", err)
+			os.Exit(1)
+		}
+		_ = streamSrv
+		streamOn = true
+		fmt.Printf("SSE stream server listening on :%s\n", *streamPort)
+		fmt.Printf("  Blazor live page: connect to http://localhost:%s/events\n", *streamPort)
+		fmt.Println("Waiting for a client to connect before running the batch...")
+		hub.WaitForSubscriber(nil)
+		fmt.Println("Client connected; running batch...")
+	}
+
 	result, err := rz.RunBatch(events, audit, rz.RunnerOpts{Now: now})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -61,6 +81,14 @@ func main() {
 	fmt.Println()
 	fmt.Println("===== HASH CHAIN VERIFICATION =====")
 	fmt.Println(renderChain(log))
+
+	if streamOn {
+		// Keep the SSE server alive so a connected Blazor client can keep
+		// receiving events (and the sandbox tamper demo keeps working).
+		fmt.Println()
+		fmt.Println("Batch complete. SSE stream server still serving — Ctrl-C to exit.")
+		select {}
+	}
 }
 
 func renderChain(log []rz.AuditEntry) string {
