@@ -11,6 +11,9 @@ import (
 func main() {
 	port := flag.String("port", "8090", "SSE server port")
 	flag.Parse()
+	if v := os.Getenv("PORT"); v != "" {
+		*port = v
+	}
 
 	audit, err := rz.NewAuditStore("data/audit.log.jsonl")
 	if err != nil {
